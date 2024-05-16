@@ -76,7 +76,7 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   key: "DB_MA_PLATFORM_URL"
-                  name: "ma-requester-prod-deployment-config"
+                  name: "ma-authorization-prod-deployment-config"
             - name: POD_NAME
               valueFrom:
                 fieldRef:

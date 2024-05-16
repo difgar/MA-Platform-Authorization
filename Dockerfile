@@ -1,4 +1,4 @@
-FROM amazoncorretto:17.0.11-alpine3.19
+FROM eclipse-temurin:17-jdk-jammy
 ARG PROJECT_NAME=ma-authorization
 ARG SERVER_PORT=8081
 ARG MANAGEMENT_SERVER_PORT=18081
