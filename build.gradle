@@ -50,6 +50,8 @@ bootRun {
 	}
 
 	systemProperty "ENV", (System.properties.env ? System.properties.env : "dev")
+	systemProperty "ADMIN_CLIENT_ID", (System.properties.ADMIN_CLIENT_ID ? System.properties.ADMIN_CLIENT_ID : "admin-1234567890")
+	systemProperty "FGF_CLIENT_ID", (System.properties.FGF_CLIENT_ID ? System.properties.FGF_CLIENT_ID : "fgf-1234567890")
 	systemProperty "SERVER_PORT", (System.properties.SERVER_PORT ? System.properties.SERVER_PORT.toInteger() : "8081")
 	systemProperty "MANAGEMENT_SERVER_PORT", (System.properties.MANAGEMENT_SERVER_PORT ? System.properties.MANAGEMENT_SERVER_PORT : systemProperties['SERVER_PORT'].toInteger()+10000)
 }
