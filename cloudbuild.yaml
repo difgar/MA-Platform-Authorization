@@ -1,8 +1,6 @@
 steps:
-  - name: 'gcr.io/cloud-builders/gradle'
+  - name: 'gcr.io/cloud-builders/gradle:8.7.0-jdk17-alpine'
     args: ['bootJar','-Denv=${_ENVIRONMENT}','-DADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}','-DFGF_CLIENT_ID=${_FGF_CLIENT_ID}']
-    env:
-      JAVA_VERSION: '17'
   - name: gcr.io/cloud-builders/docker
     args:
       - build
