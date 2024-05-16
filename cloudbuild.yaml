@@ -1,6 +1,6 @@
 steps:
   - name: 'gcr.io/cloud-builders/gradle'
-    args: ['--env', 'JAVA_VERSION=17','bootJar','-Denv=${_ENVIRONMENT}','-DADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}','-DFGF_CLIENT_ID=${_FGF_CLIENT_ID}']
+    args: ['bootJar','-Denv=${_ENVIRONMENT}','-DADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}','-DFGF_CLIENT_ID=${_FGF_CLIENT_ID}']
   - name: gcr.io/cloud-builders/docker
     args:
       - build
