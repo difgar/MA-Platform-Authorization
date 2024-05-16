@@ -1,0 +1,110 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  name: "ma-authorization-prod-deployment-config"
+  namespace: "default"
+  labels:
+    app: "ma-authorization"
+    env: "prod"
+data:
+  ENVIRONMENT: "production"
+  SERVER_PORT: "8081"
+  MANAGEMENT_SERVER_PORT: "18081"
+  DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_platform_auth"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "ma-authorization-prod-deployment"
+  namespace: "default"
+  labels:
+    app: "ma-authorization"
+    env: "prod"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "ma-authorization"
+  template:
+    metadata:
+      labels:
+        app: "ma-authorization"
+        env: "prod"
+    spec:
+      nodeSelector:
+        app: "ma-platform-entry"
+        env: "prod"
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: "ma-authorization-sha256-1"
+          image: "gcr.io/sms-ma-platform/ma-authorization"
+          resources:
+            requests:
+              memory: "400Mi"
+              cpu: "100m"
+            limits:
+              memory: "600Mi"
+              cpu: "500m"
+          env:
+            - name: "env"
+              valueFrom:
+                configMapKeyRef:
+                  key: "ENVIRONMENT"
+                  name: "ma-authorization-prod-deployment-config"
+            - name: "SERVER_PORT"
+              valueFrom:
+                configMapKeyRef:
+                  key: "SERVER_PORT"
+                  name: "ma-authorization-prod-deployment-config"
+            - name: "MANAGEMENT_SERVER_PORT"
+              valueFrom:
+                configMapKeyRef:
+                  key: "MANAGEMENT_SERVER_PORT"
+                  name: "ma-authorization-prod-deployment-config"
+            - name: "DB_MA_PLATFORM_USER"
+              valueFrom:
+                secretKeyRef:
+                  key: "user"
+                  name: "ma-platform-db"
+            - name: "DB_MA_PLATFORM_PASSWORD"
+              valueFrom:
+                secretKeyRef:
+                  key: "password"
+                  name: "ma-platform-db"
+            - name: "DB_MA_PLATFORM_URL"
+              valueFrom:
+                configMapKeyRef:
+                  key: "DB_MA_PLATFORM_URL"
+                  name: "ma-requester-prod-deployment-config"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: APP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app']
+---
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "ma-authorization-prod-deployment-hpa"
+  namespace: "default"
+  labels:
+    app: "ma-authorization"
+    env: "prod"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "ma-authorization-prod-deployment"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: "Resource"
+      resource:
+        name: "cpu"
+        target:
+          type: Utilization
+          averageUtilization: 80

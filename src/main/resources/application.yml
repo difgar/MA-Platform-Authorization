@@ -1,0 +1,49 @@
+server:
+  servlet:
+    context-path: /authorization-api
+  port: 18080
+spring:
+  application.name: MA-Platform-Authorization
+  profiles.active: prod
+  jackson.serialization.indent_output: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_MA_PLATFORM_URL}?ApplicationName=authorization-api
+    password: ${DB_MA_PLATFORM_PASSWORD}
+    username: ${DB_MA_PLATFORM_USER}
+    hikari:
+      minimumIdle: 5
+      maximumPoolSize: 20
+      idleTimeout: 30000
+      poolName: SpringBootJPAHikariCP
+      maxLifetime: 2000000
+      connectionTimeout: 30000
+  jpa:
+    database: MYSQL
+    show-sql: false
+    generate-ddl: true
+
+management:
+  security.enabled: false
+  endpoint.health.show-details: always
+  endpoints.web:
+    exposure.include: health
+    base-path: /mon
+springdoc:
+  show-actuator: false
+  api-docs:
+    enabled: false
+    path: /docs-api
+  swagger-ui:
+    enabled: false
+    path: /docs-ui
+
+google:
+  oauth:
+    clientList:
+      -
+        id: ${ADMIN_CLIENT_ID}
+        app: admin
+      -
+        id: ${FGF_CLIENT_ID}
+        app: fgf
