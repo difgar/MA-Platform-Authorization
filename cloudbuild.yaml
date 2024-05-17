@@ -68,7 +68,7 @@ substitutions:
   _K8S_APP_NAME: ma-authorization-prod-deployment
   _IMAGE_NAME: gcr.io/sms-ma-platform/ma-authorization
   _DOCKERFILE_DIR: ''
-  _ENVIRONMENT: 'production'
+  _ENVIRONMENT: 'prod'
 tags:
   - gcp-cloud-build-deploy
   - $_K8S_APP_NAME
