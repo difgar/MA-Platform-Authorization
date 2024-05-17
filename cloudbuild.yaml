@@ -58,6 +58,8 @@ steps:
         apk add --no-cache gettext
         echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
+        rm output/expanded/aggregated-resources.yaml
+        cat output/expanded/deployment_substituted.yaml
     id: Replace using envsubst
   # Paso de depuración para listar los archivos en output/expanded
   - name: 'gcr.io/cloud-builders/gcloud'
