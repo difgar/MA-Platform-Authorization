@@ -23,6 +23,12 @@ public class AuthorizationController {
 
     private AuthorizationService authorizationService;
     private GoogleOAuthParamsConfig googleOAuthParamsConfig;
+
+    @GetMapping("health-check")
+    public ResponseEntity<String> healthCheck() {
+        return ResponseEntity.ok("OK");
+    }
+
     @GetMapping("env")
     public ResponseEntity<ResponseDto> getEnv() {
 

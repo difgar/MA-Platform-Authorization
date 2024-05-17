@@ -34,6 +34,7 @@ public class SecurityConfig {
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(http -> {
+                    http.requestMatchers(HttpMethod.GET, "/v1/authorization/health-check").permitAll();
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/env").permitAll();
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/role").authenticated();
                     http.requestMatchers(HttpMethod.POST, "/v1/authorization").hasAnyRole("admin");
