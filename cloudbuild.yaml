@@ -64,7 +64,7 @@ steps:
       - '-c'
       - |
         echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
-        envsubst < output/expanded/deployment.yaml > output/expanded/deployment_substituted.yaml
+        envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
         kubectl apply -f output/expanded/deployment_substituted.yaml
     id: Apply deploy with envsubst
 images:
