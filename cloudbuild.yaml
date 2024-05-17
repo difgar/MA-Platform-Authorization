@@ -54,12 +54,12 @@ steps:
 #    id: Apply deploy
   # Paso de depuración para listar los archivos en output/expanded
   - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
+    entrypoint: 'sh'
     args:
       - '-c'
       - 'ls -R output/expanded/'
   - name: alpine:3.12
-    entrypoint: 'bash'
+    entrypoint: 'sh'
     args:
       - '-c'
       - |
