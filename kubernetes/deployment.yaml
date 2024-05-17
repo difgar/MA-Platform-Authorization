@@ -48,9 +48,9 @@ spec:
               cpu: "500m"
           env:
             - name: "ADMIN_CLIENT_ID"
-              value: ${_ADMIN_CLIENT_ID}
+              value: "admin-test"
             - name: "FGF_CLIENT_ID"
-              value: ${_FGF_CLIENT_ID}
+              value: "fgf-test"
             - name: "env"
               valueFrom:
                 configMapKeyRef:
