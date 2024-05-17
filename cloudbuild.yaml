@@ -58,7 +58,7 @@ steps:
     args:
       - '-c'
       - 'ls -R output/expanded/'
-  - name: gcr.io/cloud-builders/gcloud
+  - name: alpine:3.12
     entrypoint: 'bash'
     args:
       - '-c'
