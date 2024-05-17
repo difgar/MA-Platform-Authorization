@@ -52,6 +52,15 @@ steps:
       - '--location=$_GKE_LOCATION'
       - '--namespace=$_K8S_NAMESPACE'
     id: Apply deploy
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
+        envsubst < output/expanded/deployment.yaml > output/expanded/deployment_substituted.yaml
+        kubectl apply -f output/expanded/deployment_substituted.yaml
+    id: Apply deploy with envsubst
 images:
   - '$_IMAGE_NAME'
 options:
