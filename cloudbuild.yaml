@@ -44,14 +44,6 @@ steps:
         fi
     id: Save configs
     entrypoint: sh
-#  - name: gcr.io/cloud-builders/gke-deploy
-#    args:
-#      - apply
-#      - '--filename=output/expanded'
-#      - '--cluster=$_GKE_CLUSTER'
-#      - '--location=$_GKE_LOCATION'
-#      - '--namespace=$_K8S_NAMESPACE'
-#    id: Apply deploy
   # Paso de depuración para listar los archivos en output/expanded
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'sh'
@@ -64,10 +56,23 @@ steps:
       - '-c'
       - |
         apk add --no-cache gettext
-        echo "Applying deployment with EMAIL=${_EMAIL}"
+        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
-        kubectl apply -f output/expanded/deployment_substituted.yaml
-    id: Apply deploy with envsubst
+    id: Replace using envsubst
+  # Paso de depuración para listar los archivos en output/expanded
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - 'ls -R output/expanded/'
+  - name: gcr.io/cloud-builders/gke-deploy
+    args:
+      - apply
+      - '--filename=output/expanded'
+      - '--cluster=$_GKE_CLUSTER'
+      - '--location=$_GKE_LOCATION'
+      - '--namespace=$_K8S_NAMESPACE'
+    id: Apply deploy
 images:
   - '$_IMAGE_NAME'
 options:
