@@ -1,5 +1,6 @@
 package com.mobileamericas.authorization.controllers;
 
+import com.mobileamericas.authorization.infrastructure.config.GoogleOAuthParamsConfig;
 import com.mobileamericas.authorization.infrastructure.web.ResponseDto;
 import com.mobileamericas.authorization.services.AuthorizationService;
 import lombok.AllArgsConstructor;
@@ -12,12 +13,26 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/v1/authorization")
 @AllArgsConstructor
 public class AuthorizationController {
 
     private AuthorizationService authorizationService;
+    private GoogleOAuthParamsConfig googleOAuthParamsConfig;
+    @GetMapping("env")
+    public ResponseEntity<ResponseDto> getEnv() {
+
+        var list = List.of(
+                googleOAuthParamsConfig.getClientList().stream().collect(Collectors.toList()),
+                System.getProperties().entrySet().stream().collect(Collectors.toList()),
+                System.getenv());
+
+        return ResponseEntity.ok(ResponseDto.success(list));
+    }
 
     @GetMapping("role")
     public ResponseEntity<ResponseDto> getRoles() {
