@@ -58,12 +58,13 @@ steps:
     args:
       - '-c'
       - 'ls -R output/expanded/'
-  - name: alpine:3.12
+  - name: google/cloud-sdk:alpine
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
+        apk add --no-cache gettext
+        echo "Applying deployment with EMAIL=${_EMAIL}"
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
         kubectl apply -f output/expanded/deployment_substituted.yaml
     id: Apply deploy with envsubst
