@@ -44,14 +44,20 @@ steps:
         fi
     id: Save configs
     entrypoint: sh
-  - name: gcr.io/cloud-builders/gke-deploy
+#  - name: gcr.io/cloud-builders/gke-deploy
+#    args:
+#      - apply
+#      - '--filename=output/expanded'
+#      - '--cluster=$_GKE_CLUSTER'
+#      - '--location=$_GKE_LOCATION'
+#      - '--namespace=$_K8S_NAMESPACE'
+#    id: Apply deploy
+  # Paso de depuración para listar los archivos en output/expanded
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
     args:
-      - apply
-      - '--filename=output/expanded'
-      - '--cluster=$_GKE_CLUSTER'
-      - '--location=$_GKE_LOCATION'
-      - '--namespace=$_K8S_NAMESPACE'
-    id: Apply deploy
+      - '-c'
+      - 'ls -R output/expanded/'
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: 'bash'
     args:
