@@ -56,7 +56,9 @@ steps:
       - '-c'
       - |
         apk add --no-cache gettext
-        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}"
+        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID} and FGF_CLIENT_ID=${_FGF_CLIENT_ID}"
+        export ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}
+        export FGF_CLIENT_ID=${_FGF_CLIENT_ID}
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
         rm output/expanded/aggregated-resources.yaml
         cat output/expanded/deployment_substituted.yaml
