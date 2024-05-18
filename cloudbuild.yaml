@@ -1,7 +1,7 @@
 steps:
   - name: 'gradle:jdk17'
     entrypoint: 'gradle'
-    args: ['bootJar','-Denv=${_ENVIRONMENT}','-DADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}','-DFGF_CLIENT_ID=${_FGF_CLIENT_ID}']
+    args: ['bootJar','-Denv=${_ENVIRONMENT}']
   - name: gcr.io/cloud-builders/docker
     args:
       - build
@@ -78,9 +78,8 @@ substitutions:
   _K8S_LABELS: ''
   _K8S_ANNOTATIONS: ma-authorization-trigger=bb45e87f-2865-489e-8734-190dfbc2e6a7
   _K8S_APP_NAME: ma-authorization-prod-deployment
-  _IMAGE_NAME: gcr.io/sms-ma-platform/ma-authorization
+  _IMAGE_NAME: gcr.io/sms-ma-shaplatform/ma-authorization
   _DOCKERFILE_DIR: ''
-  _ENVIRONMENT: 'prod'
 tags:
   - gcp-cloud-build-deploy
   - $_K8S_APP_NAME

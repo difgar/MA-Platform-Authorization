@@ -8,7 +8,7 @@ metadata:
     app: "ma-authorization"
     env: "prod"
 data:
-  ENVIRONMENT: "production3"
+  ENVIRONMENT: "production"
   SERVER_PORT: "8081"
   MANAGEMENT_SERVER_PORT: "18081"
   DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_platform_auth"
