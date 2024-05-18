@@ -1,9 +1,8 @@
 package com.mobileamericas.authorization.services.impl;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
-import com.mobileamericas.authorization.infrastructure.config.GoogleOAuthParamsConfig;
 import com.mobileamericas.authorization.infrastructure.persistence.entities.UserEntity;
 import com.mobileamericas.authorization.services.UserService;
+import com.mobileamericas.authorization.utils.AuthenticationUtil;
 import lombok.AllArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -24,14 +23,12 @@ import java.util.stream.Stream;
 public class UserDetailsServiceImpl implements AuthenticationUserDetailsService {
 
     private UserService userService;
-    private GoogleOAuthParamsConfig googleOAuthParamsConfig;
+    private AuthenticationUtil authenticationUtil;
     @Override
     public UserDetails loadUserDetails(Authentication authentication) throws UsernameNotFoundException {
-        GoogleIdToken idToken = (GoogleIdToken)authentication.getCredentials();
-        String clientId = idToken.getPayload().getAudience().toString();
-        String app = googleOAuthParamsConfig.getApp(clientId);
-
-        return loadUserByUsernameAndApp(authentication.getPrincipal().toString(), app);
+        return loadUserByUsernameAndApp(
+                authenticationUtil.getEmail(authentication),
+                authenticationUtil.getApp(authentication));
     }
 
     @Transactional

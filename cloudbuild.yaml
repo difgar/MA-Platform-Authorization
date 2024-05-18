@@ -44,12 +44,6 @@ steps:
         fi
     id: Save configs
     entrypoint: sh
-  # Paso de depuración para listar los archivos en output/expanded
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - 'ls -R output/expanded/'
   - name: google/cloud-sdk:alpine
     entrypoint: 'sh'
     args:
@@ -61,14 +55,7 @@ steps:
         export FGF_CLIENT_ID=${_FGF_CLIENT_ID}
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
         rm output/expanded/aggregated-resources.yaml
-        cat output/expanded/deployment_substituted.yaml
     id: Replace using envsubst
-  # Paso de depuración para listar los archivos en output/expanded
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - 'ls -R output/expanded/'
   - name: gcr.io/cloud-builders/gke-deploy
     args:
       - apply

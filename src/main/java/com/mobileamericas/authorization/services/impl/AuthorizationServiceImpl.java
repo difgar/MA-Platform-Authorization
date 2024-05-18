@@ -5,11 +5,10 @@ import com.mobileamericas.authorization.infrastructure.persistence.entities.Role
 import com.mobileamericas.authorization.model.Role;
 import com.mobileamericas.authorization.services.AuthorizationService;
 import com.mobileamericas.authorization.services.UserService;
+import com.mobileamericas.authorization.utils.AuthenticationUtil;
 import lombok.AllArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,16 +18,19 @@ import java.util.stream.Collectors;
 public class AuthorizationServiceImpl implements AuthorizationService {
 
     private UserService userService;
+    private AuthenticationUtil authenticationUtil;
 
     @Override
     public Optional<Set<Role>> getRoles() {
-        return userService.findByEmail(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString())
+        return userService.findByEmail(authenticationUtil.getEmail())
                 .map(user -> user.getRoles())
                 .map(this::roleMapper);
     }
 
     private Set<Role> roleMapper(Set<RoleEntity> roles) {
-        return roles.stream().map(roleEntity -> Role.builder()
+        return roles.stream()
+                .filter(rol -> rol.getApp().getName().equals(authenticationUtil.getApp()))
+                .map(roleEntity -> Role.builder()
                 .name(roleEntity.getName())
                 .permissions(permissionMapper(roleEntity.getPermissions()))
                 .build())
