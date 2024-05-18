@@ -21,6 +21,8 @@ metadata:
   labels:
     app: "ma-authorization"
     env: "prod"
+  annotations:
+    image-tag: "${TAG_NAME}"
 spec:
   replicas: 1
   selector:
@@ -31,13 +33,15 @@ spec:
       labels:
         app: "ma-authorization"
         env: "prod"
+      annotations:
+        image-tag: "${TAG_NAME}"
     spec:
       nodeSelector:
         app: "ma-platform-entry"
         env: "prod"
       terminationGracePeriodSeconds: 60
       containers:
-        - name: "ma-authorization-sha256-1"
+        - name: "ma-authorization"
           image: "gcr.io/sms-ma-platform/ma-authorization"
           resources:
             requests:
