@@ -17,12 +17,8 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - push
+      - --all-tags
       - '$_IMAGE_NAME'
-    id: Push latest
-  - name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - '$_IMAGE_NAME:${TAG_NAME}'
     id: Push
   - name: gcr.io/cloud-builders/gke-deploy
     args:
@@ -30,7 +26,7 @@ steps:
       - '--filename=$_K8S_YAML_PATH'
       - '--image=$_IMAGE_NAME:${TAG_NAME}'
       - '--app=$_K8S_APP_NAME'
-      - '--version=:${TAG_NAME}'
+      - '--version=${TAG_NAME}'
       - '--namespace=$_K8S_NAMESPACE'
       - '--label=$_K8S_LABELS'
       - '--annotation=$_K8S_ANNOTATIONS,gcb-build-id=$BUILD_ID,gcb-commit=$COMMIT_SHA'
@@ -57,7 +53,7 @@ steps:
       - '-c'
       - |
         apk add --no-cache gettext
-        echo "Applying deployment with ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID} and FGF_CLIENT_ID=${_FGF_CLIENT_ID}"
+        echo "Applying deployment with TAG_NAME=${TAG_NAME}"
         export ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}
         export FGF_CLIENT_ID=${_FGF_CLIENT_ID}
         export TAG_NAME=${TAG_NAME}
