@@ -38,7 +38,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity, JwtUtil jwtUtil, ObjectMapper objectMapper, AuthenticationManager authenticationManager) throws Exception {
         return httpSecurity
-                .cors(cors -> cors.disable())
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -48,6 +48,7 @@ public class SecurityConfig {
                     http.requestMatchers(HttpMethod.POST, "/v1/authorization/google").permitAll();
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/role").authenticated();
                     http.requestMatchers(HttpMethod.POST, "/v1/authorization").hasAnyRole("admin");
+                    http.requestMatchers(HttpMethod.OPTIONS,"/**").permitAll();
                     http.requestMatchers("/error").permitAll();
                     http.requestMatchers("/logout").permitAll();
                     http.requestMatchers("/login").permitAll();
