@@ -1,6 +1,5 @@
 package com.mobileamericas.authorization.infrastructure.security;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import lombok.AllArgsConstructor;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.core.Authentication;
@@ -16,12 +15,8 @@ public class CustomAuthenticationProvider implements AuthenticationProvider {
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-        String email = authentication.getPrincipal().toString();
-        GoogleIdToken idToken = (GoogleIdToken)authentication.getCredentials();
-        String clientId = idToken.getPayload().getAudience().toString();
-
         UserDetails userDetails = userDetailsService.loadUserDetails(authentication);
-        return new PreAuthenticatedAuthenticationToken(userDetails.getUsername(), idToken, userDetails.getAuthorities());
+        return new PreAuthenticatedAuthenticationToken(userDetails.getUsername(), userDetails, userDetails.getAuthorities());
     }
 
     @Override

@@ -47,3 +47,16 @@ google:
       -
         id: ${FGF_CLIENT_ID}
         app: fgf
+
+authentication:
+  jwt:
+    secret: ${AUTH_SECRET}
+    inactivity-timeout: 7200000
+  cookie:
+    access:
+      name: accessToken
+      expiration: 900000
+    refresh:
+      name: refreshToken
+      expiration: 86400000
+

@@ -56,6 +56,7 @@ steps:
         echo "Applying deployment with TAG_NAME=${TAG_NAME}"
         export ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}
         export FGF_CLIENT_ID=${_FGF_CLIENT_ID}
+        export AUTH_SECRET=${_AUTH_SECRET}
         envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
         rm output/expanded/aggregated-resources.yaml
     id: Replace using envsubst

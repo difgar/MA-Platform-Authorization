@@ -31,6 +31,16 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         return roles.stream()
                 .filter(rol -> rol.getApp().getName().equals(authenticationUtil.getApp()))
                 .map(roleEntity -> Role.builder()
+                        .name(roleEntity.getName())
+                        .permissions(permissionMapper(roleEntity.getPermissions()))
+                        .build())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Role> roleMapper(Set<RoleEntity> roles, String app) {
+        return roles.stream()
+                .filter(rol -> rol.getApp().getName().equals(app))
+                .map(roleEntity -> Role.builder()
                 .name(roleEntity.getName())
                 .permissions(permissionMapper(roleEntity.getPermissions()))
                 .build())

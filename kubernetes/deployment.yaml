@@ -51,6 +51,8 @@ spec:
               value: "${ADMIN_CLIENT_ID}"
             - name: "FGF_CLIENT_ID"
               value: "${FGF_CLIENT_ID}"
+            - name: "AUTH_SECRET"
+              value: "${AUTH_SECRET}"
             - name: "env"
               valueFrom:
                 configMapKeyRef:

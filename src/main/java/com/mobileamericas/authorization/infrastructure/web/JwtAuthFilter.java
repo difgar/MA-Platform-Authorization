@@ -1,13 +1,12 @@
 package com.mobileamericas.authorization.infrastructure.web;
 
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
-import com.google.api.client.http.javanet.NetHttpTransport;
-import com.google.api.client.json.gson.GsonFactory;
-import com.mobileamericas.authorization.infrastructure.config.GoogleOAuthParamsConfig;
+import com.mobileamericas.authorization.utils.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
@@ -22,56 +21,50 @@ import org.springframework.security.web.authentication.preauth.PreAuthenticatedA
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
+import java.util.Arrays;
+import java.util.List;
 
 @AllArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER_PREFIX = "Bearer ";
-    private GoogleOAuthParamsConfig parameterProvider;
+    private static final List<String> excludeUrls = List.of(".*/authorization/google.*", ".*/authorization/env.*", ".*/authorization/refresh-token.*");
+
+    private String cookieAccessName;
     private ObjectMapper objectMapper;
     private AuthenticationManager authenticationManager;
+    private JwtUtil jwtUtil;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
-        if (StringUtils.startsWithIgnoreCase(authHeader, AUTH_HEADER_PREFIX)) {
-            String idTokenString = authHeader.substring(AUTH_HEADER_PREFIX.length());
+        String path = request.getRequestURI();
+        if (excludeUrls.stream().anyMatch(path::matches)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String idTokenString = getToken(request);
+        if (StringUtils.isNotBlank(idTokenString)) {
             try {
-                GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
-                        .setAudience(parameterProvider.getClientIdList())
-                        .build();
-
-                GoogleIdToken idToken = verifier.verify(idTokenString);
-
-                if (idToken != null) {
-                    GoogleIdToken.Payload payload = idToken.getPayload();
-                    String email = payload.getEmail();
-
-                    Authentication authResult = this.authenticationManager.authenticate(new PreAuthenticatedAuthenticationToken(email, idToken));
+                DecodedJWT decodedJWT = jwtUtil.verifyAccessTokeAndGetDecoded(idTokenString);
+                if (decodedJWT != null) {
+                    Authentication authResult = this.authenticationManager.authenticate(
+                            new PreAuthenticatedAuthenticationToken(decodedJWT.getIssuer(), jwtUtil.getUserDetail(decodedJWT)));
 
                     if(authResult.getAuthorities().isEmpty()) {
-                        throw new AccessDeniedException(String.format("The user %s don't have roles or permissions", email));
+                        throw new AccessDeniedException(String.format("The user %s don't have roles or permissions", authResult.getPrincipal().toString()));
                     }
                     SecurityContextHolder.getContext().setAuthentication(authResult);
                 } else {
                     throw new UsernameNotFoundException(String.format("Invalid token for the application"));
                 }
             } catch (AccessDeniedException e) {
-                var errorResponse = ResponseDto.error(String.format("Access denied, %s", e.getMessage()), e);
+                var errorResponse = ResponseDto.error(String.format("Access denied, %s", e.getMessage()));
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, toJson(errorResponse));
                 return;
-            } catch (UsernameNotFoundException e) {
-                var errorResponse = ResponseDto.error(String.format("User not found, %s", e.getMessage()), e);
+            } catch (UsernameNotFoundException | JWTVerificationException e) {
+                var errorResponse = ResponseDto.error(String.format("User not found, %s", e.getMessage()));
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, toJson(errorResponse));
-                return;
-            } catch (GeneralSecurityException e) {
-                var errorResponse = ResponseDto.error(String.format("Invalid JWT token, %s", e.getMessage()), e);
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, toJson(errorResponse));
-                return;
-            } catch (IOException e) {
-                var errorResponse = ResponseDto.error(String.format("Error verifying JWT token, %s", e.getMessage()), e);
-                response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, toJson(errorResponse));
                 return;
             } catch (Exception e) {
                 var errorResponse = ResponseDto.error(String.format("Error: %s", e.getMessage()), e);
@@ -80,6 +73,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String getToken(HttpServletRequest request) {
+        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (StringUtils.startsWithIgnoreCase(authHeader, AUTH_HEADER_PREFIX)) {
+            return authHeader.substring(AUTH_HEADER_PREFIX.length());
+        }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            return Arrays.stream(cookies)
+                    .filter(cookie -> cookieAccessName.equals(cookie.getName()))
+                    .map(cookie -> cookie.getValue())
+                    .findAny()
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     private String toJson(ResponseDto response) {

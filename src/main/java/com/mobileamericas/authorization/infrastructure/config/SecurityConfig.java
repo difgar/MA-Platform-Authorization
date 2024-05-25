@@ -3,7 +3,9 @@ package com.mobileamericas.authorization.infrastructure.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mobileamericas.authorization.infrastructure.security.CustomAuthenticationProvider;
 import com.mobileamericas.authorization.infrastructure.web.JwtAuthFilter;
+import com.mobileamericas.authorization.utils.JwtUtil;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -30,8 +32,11 @@ import java.util.Arrays;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    @Value("${authentication.cookie.access.name}")
+    private String COOKIE_ACCESS_NAME;
+
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity httpSecurity, GoogleOAuthParamsConfig parameterProvider, ObjectMapper objectMapper, AuthenticationManager authenticationManager) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity httpSecurity, JwtUtil jwtUtil, ObjectMapper objectMapper, AuthenticationManager authenticationManager) throws Exception {
         return httpSecurity
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
@@ -40,6 +45,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(http -> {
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/health-check").permitAll();
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/env").permitAll();
+                    http.requestMatchers(HttpMethod.POST, "/v1/authorization/google").permitAll();
                     http.requestMatchers(HttpMethod.GET, "/v1/authorization/role").authenticated();
                     http.requestMatchers(HttpMethod.POST, "/v1/authorization").hasAnyRole("admin");
                     http.requestMatchers("/error").permitAll();
@@ -47,7 +53,7 @@ public class SecurityConfig {
                     http.requestMatchers("/login").permitAll();
                     http.anyRequest().permitAll();
                 })
-                .addFilterBefore(new JwtAuthFilter(parameterProvider, objectMapper, authenticationManager), BasicAuthenticationFilter.class)
+                .addFilterBefore(new JwtAuthFilter(COOKIE_ACCESS_NAME, objectMapper, authenticationManager, jwtUtil), BasicAuthenticationFilter.class)
                 .build();
     }
 
@@ -80,10 +86,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.addAllowedOriginPattern("*");
+        configuration.addAllowedOriginPattern("http://localhost:3000");
+        configuration.addAllowedOriginPattern("http://*.mobile-americas.com");
+        configuration.addAllowedOriginPattern("https://*.mobile-americas.com");
         configuration.addAllowedHeader("*");
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowedHeaders(Arrays.asList("Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"));
+        configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

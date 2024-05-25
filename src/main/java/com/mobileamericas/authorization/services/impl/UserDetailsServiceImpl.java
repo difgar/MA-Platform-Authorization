@@ -1,6 +1,8 @@
 package com.mobileamericas.authorization.services.impl;
 
 import com.mobileamericas.authorization.infrastructure.persistence.entities.UserEntity;
+import com.mobileamericas.authorization.model.CustomUserDetail;
+import com.mobileamericas.authorization.services.AuthorizationService;
 import com.mobileamericas.authorization.services.UserService;
 import com.mobileamericas.authorization.utils.AuthenticationUtil;
 import lombok.AllArgsConstructor;
@@ -8,7 +10,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.AuthenticationUserDetailsService;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -24,23 +25,30 @@ public class UserDetailsServiceImpl implements AuthenticationUserDetailsService 
 
     private UserService userService;
     private AuthenticationUtil authenticationUtil;
+    private AuthorizationService authorizationService;
     @Override
     public UserDetails loadUserDetails(Authentication authentication) throws UsernameNotFoundException {
         return loadUserByUsernameAndApp(
                 authenticationUtil.getEmail(authentication),
-                authenticationUtil.getApp(authentication));
+                authenticationUtil.getApp(authentication),
+                authenticationUtil.getAvatar(authentication));
     }
 
     @Transactional
-    public UserDetails loadUserByUsernameAndApp(String username, String app) throws UsernameNotFoundException {
+    public UserDetails loadUserByUsernameAndApp(String username, String app, String avatar) throws UsernameNotFoundException {
         return userService.findByEmail(username)
                 .filter(user -> user.getRoles().stream().anyMatch(rol -> rol.getApp().getName().equals(app)))
-                .map(user -> User.builder()
+                .map(user -> CustomUserDetail.customBuilder()
+                        .app(app)
+                        .fullName(user.getFullName())
+                        .id(user.getId())
+                        .roles(authorizationService.roleMapper(user.getRoles(), app))
                         .username(user.getEmail())
                         .password(app)
                         .authorities(getAuthorities(user, app))
+                        .avatar(avatar)
                         .build())
-                .orElseThrow(() -> new UsernameNotFoundException(String.format("The customer %s was not found", username)));
+                .orElseThrow(() -> new UsernameNotFoundException(String.format("The customer %s was not found in the app: %s", username, app)));
     }
 
     private Set<GrantedAuthority> getAuthorities(UserEntity user, String app) {
