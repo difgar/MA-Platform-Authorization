@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mobileamericas.authorization.model.CustomUserDetail;
 import jakarta.servlet.http.Cookie;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -46,11 +47,11 @@ public class JwtUtil {
     private Integer COOKIE_REFRESH_EXPIRATION;
 
     public Cookie createAccessCookieWithToken() {
-        return createAccessCookie(createAccessToken());
+        return createAccessCookie(createAccessToken(), authenticationUtil.getApp());
     }
 
     public Cookie createRefreshCookieWithToken() {
-        return createRefreshCookie(createRefreshToken());
+        return createRefreshCookie(createRefreshToken(), authenticationUtil.getApp());
     }
 
     public String createAccessToken() {
@@ -93,18 +94,19 @@ public class JwtUtil {
 
     public Cookie refreshAccessToken(String accessToken, String refreshToken) {
         DecodedJWT decodedAuthToken = JWT.decode(accessToken);
-            verifyRefreshTokeAndGetDecoded(refreshToken);
+        verifyRefreshTokeAndGetDecoded(refreshToken);
+        var app = decodedAuthToken.getAudience().stream().findAny().orElse(null);
 
         String newAccessToken = createAccessToken(
                 decodedAuthToken.getIssuer(),
-                decodedAuthToken.getAudience().stream().findAny().orElse(null),
+                app,
                 mapClaims(decodedAuthToken.getClaims())
         );
-        return createAccessCookie(newAccessToken);
+        return createAccessCookie(newAccessToken, app);
     }
 
-    public Cookie createAccessCookie(String token) {
-        Cookie cookie = new Cookie(COOKIE_ACCESS_NAME, token);
+    public Cookie createAccessCookie(String token, String app) {
+        Cookie cookie = new Cookie(getCoockieName(COOKIE_ACCESS_NAME, app), token);
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
         cookie.setPath("/");
@@ -112,8 +114,8 @@ public class JwtUtil {
         return cookie;
     }
 
-    public Cookie createRefreshCookie(String token) {
-        Cookie cookie = new Cookie(COOKIE_REFRESH_NAME, token);
+    public Cookie createRefreshCookie(String token, String app) {
+        Cookie cookie = new Cookie(getCoockieName(COOKIE_REFRESH_NAME, app), token);
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
         cookie.setPath("/");
@@ -153,5 +155,9 @@ public class JwtUtil {
         return Map.of(CLAIM_NAME, claims.get(CLAIM_NAME).asString(),
                 CLAIM_AVATAR, claims.get(CLAIM_AVATAR).asString(),
                 CLAIM_ROLES, claims.get(CLAIM_ROLES).asList(Map.class));
+    }
+
+    private String getCoockieName(String cookie, String app) {
+        return StringUtils.join(app, StringUtils.capitalize(cookie));
     }
 }
