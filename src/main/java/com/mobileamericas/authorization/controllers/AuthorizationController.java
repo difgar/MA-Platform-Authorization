@@ -6,11 +6,11 @@ import com.mobileamericas.authorization.services.GoogleOAuthService;
 import com.mobileamericas.authorization.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/v1/authorization")
 @AllArgsConstructor
-@CrossOrigin("*")
+@Slf4j
 public class AuthorizationController {
 
     private final static String COOKIE_ACCESS_NAME = "accessToken";
@@ -36,13 +36,15 @@ public class AuthorizationController {
     private GoogleOAuthService googleOAuthService;
     private JwtUtil jwtUtil;
 
-    @GetMapping("health-check")
+    @GetMapping("/health-check")
     public ResponseEntity<String> healthCheck() {
+        log.info("/health-check");
         return ResponseEntity.ok("OK");
     }
 
-    @GetMapping("env")
+    @GetMapping("/env")
     public ResponseEntity<ResponseDto> getEnv() {
+        log.info("/env");
         var list = List.of(
                 googleOAuthService.getMapClientIds(),
                 System.getProperties().entrySet().stream().collect(Collectors.toList()),
@@ -51,8 +53,9 @@ public class AuthorizationController {
         return ResponseEntity.ok(ResponseDto.success(list));
     }
 
-    @PostMapping("google")
+    @PostMapping("/google")
     public ResponseEntity<ResponseDto> auth(@RequestBody String token, final HttpServletResponse response) throws GeneralSecurityException, IOException {
+        log.info("/google {}", token);
         googleOAuthService.validateToken(token);
         response.addCookie(jwtUtil.createAccessCookieWithToken());
         response.addCookie(jwtUtil.createRefreshCookieWithToken());
@@ -63,6 +66,7 @@ public class AuthorizationController {
     public ResponseEntity<ResponseDto> refreshToken(@CookieValue(value = COOKIE_ACCESS_NAME, required = false) String accessToken,
                                                     @CookieValue(value = COOKIE_REFRESH_NAME, required = false) String refreshToken,
                                                     HttpServletResponse response) {
+        log.info("/refresh-token {}", accessToken, refreshToken);
         if (accessToken == null || refreshToken == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ResponseDto.error("Refresh token is missing"));
         }
@@ -70,8 +74,9 @@ public class AuthorizationController {
         return ResponseEntity.ok(ResponseDto.success("OK"));
     }
 
-    @GetMapping("role")
+    @GetMapping("/role")
     public ResponseEntity<ResponseDto> getRoles() {
+        log.info("/role");
         return authorizationService.getRoles()
                 .map(roles -> ResponseEntity.ok(ResponseDto.success(roles)))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
