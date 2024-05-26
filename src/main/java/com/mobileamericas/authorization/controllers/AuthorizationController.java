@@ -4,6 +4,7 @@ import com.mobileamericas.authorization.infrastructure.web.ResponseDto;
 import com.mobileamericas.authorization.services.AuthorizationService;
 import com.mobileamericas.authorization.services.GoogleOAuthService;
 import com.mobileamericas.authorization.utils.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,14 +64,19 @@ public class AuthorizationController {
     }
 
     @PostMapping("/refresh-token")
-    public ResponseEntity<ResponseDto> refreshToken(@CookieValue(value = COOKIE_ACCESS_NAME, required = false) String accessToken,
-                                                    @CookieValue(value = COOKIE_REFRESH_NAME, required = false) String refreshToken,
-                                                    HttpServletResponse response) {
-        log.info("/refresh-token {}", accessToken, refreshToken);
-        if (accessToken == null || refreshToken == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ResponseDto.error("Refresh token is missing"));
-        }
-        response.addCookie(jwtUtil.refreshAccessToken(accessToken, refreshToken));
+    public ResponseEntity<ResponseDto> refreshToken(HttpServletRequest request, HttpServletResponse response) {
+        log.info("/refresh-token");
+        response.addCookie(jwtUtil.refreshAccessToken(request.getCookies()));
+        return ResponseEntity.ok(ResponseDto.success("OK"));
+    }
+
+    @GetMapping("/logout")
+    public ResponseEntity<ResponseDto> logout(HttpServletRequest request, HttpServletResponse response) {
+        log.info("/logout");
+
+        jwtUtil.deleteCookies(request.getCookies())
+                .forEach(cookie -> response.addCookie(cookie));
+
         return ResponseEntity.ok(ResponseDto.success("OK"));
     }
 

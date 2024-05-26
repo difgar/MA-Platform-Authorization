@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
@@ -92,7 +93,23 @@ public class JwtUtil {
                 .sign(Algorithm.HMAC256(JWT_SECRET));
     }
 
-    public Cookie refreshAccessToken(String accessToken, String refreshToken) {
+    public Cookie refreshAccessToken(Cookie[] cookies) {
+        if(cookies == null) {
+            return null;
+        }
+
+        String accessToken = Arrays.stream(cookies)
+                .filter(cookie -> cookie.getName().equals(getCoockieName(COOKIE_ACCESS_NAME, authenticationUtil.getApp())))
+                .map(Cookie::getValue)
+                .findAny()
+                .orElse(null);
+
+        String refreshToken = Arrays.stream(cookies)
+                .filter(cookie -> cookie.getName().equals(getCoockieName(COOKIE_REFRESH_NAME, authenticationUtil.getApp())))
+                .map(Cookie::getValue)
+                .findAny()
+                .orElse(null);
+
         DecodedJWT decodedAuthToken = JWT.decode(accessToken);
         verifyRefreshTokeAndGetDecoded(refreshToken);
         var app = decodedAuthToken.getAudience().stream().findAny().orElse(null);
@@ -149,6 +166,22 @@ public class JwtUtil {
                 .avatar(decodedJWT.getClaim(CLAIM_AVATAR).asString())
                 .roles(Set.of())
                 .build();
+    }
+
+    public List<Cookie> deleteCookies(Cookie[] cookies) {
+        if(cookies == null) {
+            return List.of();
+        }
+
+        return Arrays.stream(cookies)
+                .map(cookie -> {
+                    Cookie newCookie = new Cookie(cookie.getName(), null);
+                    newCookie.setHttpOnly(true);
+                    newCookie.setSecure(true);
+                    newCookie.setPath("/");
+                    newCookie.setMaxAge(0);
+                    return newCookie;
+                }).collect(Collectors.toList());
     }
 
     private Map<String, ?> mapClaims(Map<String, Claim> claims) {
