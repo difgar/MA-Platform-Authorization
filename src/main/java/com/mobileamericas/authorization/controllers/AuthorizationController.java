@@ -4,6 +4,7 @@ import com.mobileamericas.authorization.infrastructure.web.ResponseDto;
 import com.mobileamericas.authorization.services.AuthorizationService;
 import com.mobileamericas.authorization.services.GoogleOAuthService;
 import com.mobileamericas.authorization.utils.JwtUtil;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
@@ -20,9 +21,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -67,10 +67,7 @@ public class AuthorizationController {
         refreshCookie.setDomain(domain);
         response.addCookie(refreshCookie);
 
-        return ResponseEntity.ok(ResponseDto.success(Map.of(
-                accessCookie.getName(), accessCookie.getValue(),
-                refreshCookie.getName(), refreshCookie.getValue()
-        )));
+        return ResponseEntity.ok(ResponseDto.success(mapToken(accessCookie, refreshCookie)));
     }
 
     @PostMapping("/refresh-token")
@@ -81,9 +78,7 @@ public class AuthorizationController {
         accessCookie.setDomain(domain);
         response.addCookie(accessCookie);
 
-        return ResponseEntity.ok(ResponseDto.success(Map.of(
-                accessCookie.getName(), accessCookie.getValue()
-        )));
+        return ResponseEntity.ok(ResponseDto.success(mapToken(accessCookie)));
     }
 
     @GetMapping("/logout")
@@ -128,5 +123,11 @@ public class AuthorizationController {
             return parts[parts.length - 2].concat(".").concat(parts[parts.length - 1]);
         }
         return origin;
+    }
+
+    private List<Map<String, String>> mapToken(Cookie ...cookies) {
+        return Arrays.stream(cookies)
+                .map(cookie -> Map.of("name", cookie.getName(), "token", cookie.getValue()))
+                .collect(Collectors.toList());
     }
 }
