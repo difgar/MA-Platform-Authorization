@@ -114,7 +114,7 @@ public class AuthorizationController {
     }
     
     private String getDomain(final HttpServletRequest request) {
-        String origin = request.getHeader("Origin");
+        /*String origin = request.getHeader("Origin");
         if (origin == null || origin.isEmpty()) {
             origin = request.getHeader("Referer");
         }
@@ -122,8 +122,8 @@ public class AuthorizationController {
         if (StringUtils.isBlank(origin)) {
             log.warn("Origin is empty");
             return null;
-        }
-
+        }*/
+        String origin = request.getServerName();
         try {
             URL url = new URL(origin);
             return url.getHost();
