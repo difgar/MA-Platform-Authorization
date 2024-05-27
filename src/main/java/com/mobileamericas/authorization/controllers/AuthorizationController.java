@@ -117,7 +117,7 @@ public class AuthorizationController {
         String origin = request.getServerName();
         String[] parts = StringUtils.split(origin, '.');
         if (parts.length >= 3) {
-            return ".".concat(parts[parts.length - 2]).concat(".").concat(parts[parts.length - 1]);
+            return parts[parts.length - 2].concat(".").concat(parts[parts.length - 1]);
         }
         return origin;
     }
