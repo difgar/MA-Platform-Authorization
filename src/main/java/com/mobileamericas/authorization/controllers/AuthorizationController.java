@@ -56,7 +56,7 @@ public class AuthorizationController {
     @PostMapping("/google")
     public ResponseEntity<ResponseDto> auth(@RequestBody String token, final HttpServletRequest request, final HttpServletResponse response) throws GeneralSecurityException, IOException {
         log.info("/google {}", token);
-        var domain = getDomain(request);
+        var domain = getDomainToCookie(request);
         googleOAuthService.validateToken(token);
         var accessCookie = jwtUtil.createAccessCookieWithToken();
         accessCookie.setDomain(domain);
@@ -71,7 +71,7 @@ public class AuthorizationController {
     @PostMapping("/refresh-token")
     public ResponseEntity<ResponseDto> refreshToken(HttpServletRequest request, HttpServletResponse response) {
         log.info("/refresh-token");
-        var domain = getDomain(request);
+        var domain = getDomainToCookie(request);
         var accessCookie = jwtUtil.refreshAccessToken(request.getCookies());
         accessCookie.setDomain(domain);
         response.addCookie(accessCookie);
@@ -81,7 +81,7 @@ public class AuthorizationController {
     @GetMapping("/logout")
     public ResponseEntity<ResponseDto> logout(HttpServletRequest request, HttpServletResponse response) {
         log.info("/logout");
-        var domain = getDomain(request);
+        var domain = getDomainToCookie(request);
         jwtUtil.deleteCookies(request.getCookies())
                 .forEach(cookie -> {
                     cookie.setDomain(domain);
@@ -113,7 +113,7 @@ public class AuthorizationController {
         return SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString();
     }
     
-    private String getDomain(final HttpServletRequest request) {
+    private String getDomainToCookie(final HttpServletRequest request) {
         /*String origin = request.getHeader("Origin");
         if (origin == null || origin.isEmpty()) {
             origin = request.getHeader("Referer");
@@ -126,6 +126,12 @@ public class AuthorizationController {
         String origin = request.getServerName();
         try {
             URL url = new URL(origin);
+
+            String[] parts = StringUtils.split(url.getHost(), '.');
+            if (parts.length >= 3) {
+                return ".".concat(parts[parts.length - 2]).concat(".").concat(parts[parts.length - 1]);
+            }
+
             return url.getHost();
         } catch (MalformedURLException e) {
             log.error("Invalid Origin {}", e.getMessage(), e);
