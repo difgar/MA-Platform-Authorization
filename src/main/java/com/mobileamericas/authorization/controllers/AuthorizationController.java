@@ -114,28 +114,11 @@ public class AuthorizationController {
     }
     
     private String getDomainToCookie(final HttpServletRequest request) {
-        /*String origin = request.getHeader("Origin");
-        if (origin == null || origin.isEmpty()) {
-            origin = request.getHeader("Referer");
-        }
-
-        if (StringUtils.isBlank(origin)) {
-            log.warn("Origin is empty");
-            return null;
-        }*/
         String origin = request.getServerName();
-        try {
-            URL url = new URL(origin);
-
-            String[] parts = StringUtils.split(url.getHost(), '.');
-            if (parts.length >= 3) {
-                return ".".concat(parts[parts.length - 2]).concat(".").concat(parts[parts.length - 1]);
-            }
-
-            return url.getHost();
-        } catch (MalformedURLException e) {
-            log.error("Invalid Origin {}", e.getMessage(), e);
-            return null;
+        String[] parts = StringUtils.split(origin, '.');
+        if (parts.length >= 3) {
+            return ".".concat(parts[parts.length - 2]).concat(".").concat(parts[parts.length - 1]);
         }
+        return origin;
     }
 }
