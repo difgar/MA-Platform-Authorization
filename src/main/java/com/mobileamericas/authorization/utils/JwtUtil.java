@@ -124,21 +124,21 @@ public class JwtUtil {
 
     public Cookie createAccessCookie(String token, String app) {
         Cookie cookie = new Cookie(getCoockieName(COOKIE_ACCESS_NAME, app), token);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
         cookie.setPath("/");
-        cookie.setAttribute("SameSite", "Lax");
         cookie.setMaxAge(Math.toIntExact(TimeUnit.MILLISECONDS.toSeconds(COOKIE_ACCESS_EXPIRATION)));
+        //cookie.setHttpOnly(true);
+        //cookie.setSecure(true);
+        //cookie.setAttribute("SameSite", "Lax");
         return cookie;
     }
 
     public Cookie createRefreshCookie(String token, String app) {
         Cookie cookie = new Cookie(getCoockieName(COOKIE_REFRESH_NAME, app), token);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
         cookie.setPath("/");
-        cookie.setAttribute("SameSite", "Lax");
         cookie.setMaxAge(Math.toIntExact(TimeUnit.MILLISECONDS.toSeconds(COOKIE_REFRESH_EXPIRATION)));
+        //cookie.setHttpOnly(true);
+        //cookie.setSecure(true);
+        //cookie.setAttribute("SameSite", "Lax");
         return cookie;
     }
 
@@ -178,11 +178,11 @@ public class JwtUtil {
         return Arrays.stream(cookies)
                 .map(cookie -> {
                     Cookie newCookie = new Cookie(cookie.getName(), null);
-                    newCookie.setHttpOnly(true);
-                    newCookie.setSecure(true);
-                    newCookie.setPath("/");
+                    cookie.setPath("/");
                     newCookie.setMaxAge(0);
-                    newCookie.setAttribute("SameSite", "Lax");
+                    //cookie.setHttpOnly(true);
+                    //cookie.setSecure(true);
+                    //cookie.setAttribute("SameSite", "Lax");
                     return newCookie;
                 }).collect(Collectors.toList());
     }
