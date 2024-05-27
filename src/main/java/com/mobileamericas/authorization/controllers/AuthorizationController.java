@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -55,27 +54,38 @@ public class AuthorizationController {
     }
 
     @PostMapping("/google")
-    public ResponseEntity<ResponseDto> auth(@RequestBody String token, final HttpServletResponse response) throws GeneralSecurityException, IOException {
+    public ResponseEntity<ResponseDto> auth(@RequestBody String token, final HttpServletRequest request, final HttpServletResponse response) throws GeneralSecurityException, IOException {
         log.info("/google {}", token);
+        var domain = request.getServerName();
         googleOAuthService.validateToken(token);
-        response.addCookie(jwtUtil.createAccessCookieWithToken());
-        response.addCookie(jwtUtil.createRefreshCookieWithToken());
+        var accessCookie = jwtUtil.createAccessCookieWithToken();
+        accessCookie.setDomain(domain);
+        response.addCookie(accessCookie);
+
+        var refreshCookie = jwtUtil.createRefreshCookieWithToken();
+        refreshCookie.setDomain(domain);
+        response.addCookie(refreshCookie);
         return ResponseEntity.ok(ResponseDto.success("OK"));
     }
 
     @PostMapping("/refresh-token")
     public ResponseEntity<ResponseDto> refreshToken(HttpServletRequest request, HttpServletResponse response) {
         log.info("/refresh-token");
-        response.addCookie(jwtUtil.refreshAccessToken(request.getCookies()));
+        var domain = request.getServerName();
+        var accessCookie = jwtUtil.refreshAccessToken(request.getCookies());
+        accessCookie.setDomain(domain);
+        response.addCookie(accessCookie);
         return ResponseEntity.ok(ResponseDto.success("OK"));
     }
 
     @GetMapping("/logout")
     public ResponseEntity<ResponseDto> logout(HttpServletRequest request, HttpServletResponse response) {
         log.info("/logout");
-
+        var domain = request.getServerName();
         jwtUtil.deleteCookies(request.getCookies())
-                .forEach(cookie -> response.addCookie(cookie));
+                .forEach(cookie -> {
+                    cookie.setDomain(domain);
+                    response.addCookie(cookie);});
 
         return ResponseEntity.ok(ResponseDto.success("OK"));
     }
