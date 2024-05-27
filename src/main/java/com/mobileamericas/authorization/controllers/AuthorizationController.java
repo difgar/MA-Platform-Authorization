@@ -24,6 +24,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -65,7 +66,11 @@ public class AuthorizationController {
         var refreshCookie = jwtUtil.createRefreshCookieWithToken();
         refreshCookie.setDomain(domain);
         response.addCookie(refreshCookie);
-        return ResponseEntity.ok(ResponseDto.success("OK"));
+
+        return ResponseEntity.ok(ResponseDto.success(Map.of(
+                accessCookie.getName(), accessCookie.getValue(),
+                refreshCookie.getName(), refreshCookie.getValue()
+        )));
     }
 
     @PostMapping("/refresh-token")
@@ -75,7 +80,10 @@ public class AuthorizationController {
         var accessCookie = jwtUtil.refreshAccessToken(request.getCookies());
         accessCookie.setDomain(domain);
         response.addCookie(accessCookie);
-        return ResponseEntity.ok(ResponseDto.success("OK"));
+
+        return ResponseEntity.ok(ResponseDto.success(Map.of(
+                accessCookie.getName(), accessCookie.getValue()
+        )));
     }
 
     @GetMapping("/logout")
