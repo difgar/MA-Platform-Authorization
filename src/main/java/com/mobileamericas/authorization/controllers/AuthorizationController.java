@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,9 +31,6 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 @Slf4j
 public class AuthorizationController {
-
-    private final static String COOKIE_ACCESS_NAME = "accessToken";
-    private final static String COOKIE_REFRESH_NAME = "refreshToken";
 
     private AuthorizationService authorizationService;
     private GoogleOAuthService googleOAuthService;
@@ -56,7 +56,7 @@ public class AuthorizationController {
     @PostMapping("/google")
     public ResponseEntity<ResponseDto> auth(@RequestBody String token, final HttpServletRequest request, final HttpServletResponse response) throws GeneralSecurityException, IOException {
         log.info("/google {}", token);
-        var domain = request.getServerName();
+        var domain = getDomain(request);
         googleOAuthService.validateToken(token);
         var accessCookie = jwtUtil.createAccessCookieWithToken();
         accessCookie.setDomain(domain);
@@ -71,7 +71,7 @@ public class AuthorizationController {
     @PostMapping("/refresh-token")
     public ResponseEntity<ResponseDto> refreshToken(HttpServletRequest request, HttpServletResponse response) {
         log.info("/refresh-token");
-        var domain = request.getServerName();
+        var domain = getDomain(request);
         var accessCookie = jwtUtil.refreshAccessToken(request.getCookies());
         accessCookie.setDomain(domain);
         response.addCookie(accessCookie);
@@ -81,7 +81,7 @@ public class AuthorizationController {
     @GetMapping("/logout")
     public ResponseEntity<ResponseDto> logout(HttpServletRequest request, HttpServletResponse response) {
         log.info("/logout");
-        var domain = request.getServerName();
+        var domain = getDomain(request);
         jwtUtil.deleteCookies(request.getCookies())
                 .forEach(cookie -> {
                     cookie.setDomain(domain);
@@ -111,5 +111,25 @@ public class AuthorizationController {
 
     private String getUserName() {
         return SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString();
+    }
+    
+    private String getDomain(final HttpServletRequest request) {
+        String origin = request.getHeader("Origin");
+        if (origin == null || origin.isEmpty()) {
+            origin = request.getHeader("Referer");
+        }
+
+        if (StringUtils.isBlank(origin)) {
+            log.warn("Origin is empty");
+            return null;
+        }
+
+        try {
+            URL url = new URL(origin);
+            return url.getHost();
+        } catch (MalformedURLException e) {
+            log.error("Invalid Origin {}", e.getMessage(), e);
+            return null;
+        }
     }
 }
