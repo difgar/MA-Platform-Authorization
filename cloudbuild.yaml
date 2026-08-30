@@ -1,5 +1,5 @@
 steps:
-  - name: 'gradle:jdk17'
+  - name: 'gradle:8.7-jdk17'
     entrypoint: 'gradle'
     args: ['bootJar','-Denv=${_ENVIRONMENT}']
   - name: gcr.io/cloud-builders/docker

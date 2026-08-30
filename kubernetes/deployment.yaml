@@ -39,14 +39,21 @@ spec:
       containers:
         - name: "ma-authorization"
           image: "gcr.io/sms-ma-platform/ma-authorization"
+          ports:
+            - name: "http"
+              containerPort: 8081
+            - name: "management"
+              containerPort: 18081
           resources:
             requests:
-              memory: "400Mi"
+              memory: "288Mi"
               cpu: "100m"
             limits:
-              memory: "600Mi"
-              cpu: "500m"
+              # sin limits.cpu a proposito: provocaria throttling en el arranque
+              memory: "490Mi"
           env:
+            - name: "JAVA_TOOL_OPTIONS"
+              value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25"
             - name: "ADMIN_CLIENT_ID"
               value: "${ADMIN_CLIENT_ID}"
             - name: "FGF_CLIENT_ID"
@@ -91,6 +98,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.labels['app']
+          startupProbe:
+            httpGet:
+              path: "/actuator/health/readiness"
+              port: "management"
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: "/actuator/health/readiness"
+              port: "management"
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: "autoscaling/v2"
 kind: "HorizontalPodAutoscaler"
@@ -106,7 +127,7 @@ spec:
     name: "ma-authorization-prod-deployment"
     apiVersion: "apps/v1"
   minReplicas: 1
-  maxReplicas: 2
+  maxReplicas: 1
   metrics:
     - type: "Resource"
       resource:

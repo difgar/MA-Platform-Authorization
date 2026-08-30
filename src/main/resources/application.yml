@@ -24,11 +24,14 @@ spring:
     generate-ddl: true
 
 management:
+  server.port: ${MANAGEMENT_SERVER_PORT:18081}
   security.enabled: false
-  endpoint.health.show-details: always
+  endpoint.health:
+    show-details: always
+    probes.enabled: true
   endpoints.web:
     exposure.include: health
-    base-path: /mon
+    base-path: /actuator
 springdoc:
   show-actuator: false
   api-docs:
