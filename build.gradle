@@ -1,62 +1,69 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.3.0'
-	id 'io.spring.dependency-management' version '1.1.4'
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'com.mobileamericas'
 version = '0.0.1-SNAPSHOT'
 
 java {
-	sourceCompatibility = '17'
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 repositories {
-	mavenCentral()
-	maven { url 'https://repo.spring.io/milestone' }
+    mavenCentral()
+}
+
+// Source set propio: los tests de integración levantan contenedores y no deben
+// correr en cada './gradlew test'.
+sourceSets {
+    integrationTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.springframework.boot:spring-boot-starter-logging'
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
-	implementation ('com.google.api-client:google-api-client:2.4.1') {
-		exclude group: 'commons-logging', module: 'commons-logging'
-	}
-	implementation 'com.auth0:java-jwt:4.4.0'
-	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.mysql:mysql-connector-j'
-	annotationProcessor 'org.projectlombok:lombok'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
-/*tasks.named('test') {
-	useJUnitPlatform()
-}*/
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging { events 'failed' }
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'Pruebas de integración contra MySQL y PostgreSQL reales.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.named('test')
+    testLogging { events 'failed' }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('integrationTest')
+}
 
 bootJar {
-	archiveBaseName = "ma-authorization"
-}
-
-bootRun {
-	//-Denv=dev -DDB_MA_PLATFORM_URL=xxx -DDB_MA_PLATFORM_USER=yyy -DDB_MA_PLATFORM_PASSWORD=zzz
-	if (!System.properties.env || System.properties.env == "dev") {
-		systemProperty "DB_MA_PLATFORM_URL", "jdbc:mysql://localhost:3306/ma_platform_auth"
-		systemProperty "DB_MA_PLATFORM_USER", "ma-platform-user"
-		systemProperty "DB_MA_PLATFORM_PASSWORD", "ma-platform-password"
-	} else {
-		systemProperty "DB_MA_PLATFORM_URL", System.properties.DB_MA_PLATFORM_URL
-		systemProperty "DB_MA_PLATFORM_USER", System.properties.DB_MA_PLATFORM_USER
-		systemProperty "DB_MA_PLATFORM_PASSWORD", System.properties.DB_MA_PLATFORM_PASSWORD
-	}
-
-	systemProperty "ENV", (System.properties.env ? System.properties.env : "dev")
-	systemProperty "ADMIN_CLIENT_ID", (System.properties.ADMIN_CLIENT_ID ? System.properties.ADMIN_CLIENT_ID : "admin-1234567890")
-	systemProperty "FGF_CLIENT_ID", (System.properties.FGF_CLIENT_ID ? System.properties.FGF_CLIENT_ID : "fgf-1234567890")
-	systemProperty "AUTH_SECRET", (System.properties.AUTH_SECRET ? System.properties.AUTH_SECRET : "auth-1234567890")
-	systemProperty "SERVER_PORT", (System.properties.SERVER_PORT ? System.properties.SERVER_PORT.toInteger() : "8081")
-	systemProperty "MANAGEMENT_SERVER_PORT", (System.properties.MANAGEMENT_SERVER_PORT ? System.properties.MANAGEMENT_SERVER_PORT : systemProperties['SERVER_PORT'].toInteger()+10000)
+    archiveBaseName = 'ma-authorization'
 }
