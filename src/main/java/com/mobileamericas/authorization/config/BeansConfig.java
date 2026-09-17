@@ -9,7 +9,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.io.IOException;
@@ -45,10 +48,22 @@ public class BeansConfig {
      * withJwkSetUri(...) resuelve el JWKS de forma perezosa, en el primer
      * decode(), no al construir el bean: así el contexto de Spring arranca sin
      * red, lo que necesitan las pruebas de integración (sandbox sin internet).
+     *
+     * JwtValidators.createDefault() SOLO comprueba 'exp'/'nbf'; el 'iss' no se
+     * valida en absoluto por defecto, aunque GoogleProperties.acceptedIssuers()
+     * exista y sugiera lo contrario a quien lea la configuración. Se añade
+     * aparte, comprobando membresía en esa lista en vez de igualdad contra un
+     * único valor, por las dos formas legítimas del 'iss' de Google
+     * documentadas ahí.
      */
     @Bean
     JwtDecoder googleJwtDecoder(GoogleProperties props) {
-        return NimbusJwtDecoder.withJwkSetUri(props.jwkSetUri()).build();
+        var decoder = NimbusJwtDecoder.withJwkSetUri(props.jwkSetUri()).build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefault(),
+                new JwtClaimValidator<String>("iss",
+                        iss -> iss != null && props.acceptedIssuers().contains(iss))));
+        return decoder;
     }
 
     private String leer(ResourceLoader loader, String location) {
