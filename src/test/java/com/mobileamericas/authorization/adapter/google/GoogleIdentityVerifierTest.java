@@ -182,6 +182,38 @@ class GoogleIdentityVerifierTest {
     }
 
     @Test
+    void acepta_la_forma_sin_esquema_del_emisor_de_google() throws Exception {
+        // Google emite ID token con 'iss' tanto en forma de URL
+        // ('https://accounts.google.com') como en forma pelada, sin esquema
+        // ('accounts.google.com'); ambas son legítimas. El fix de la ronda
+        // anterior solo probaba el rechazo de un emisor ajeno usando la forma
+        // CON esquema para el token válido de referencia — esta es la
+        // positiva que le faltaba: que la forma SIN esquema, la razón de ser
+        // del fix, se acepte de verdad.
+        var sinEsquema = tokenFirmadoCon(clave, "accounts.google.com", List.of("cliente-admin"),
+                "persona@ejemplo.com", Instant.now().plus(1, ChronoUnit.HOURS));
+
+        var identidad = verificador.verify(sinEsquema);
+
+        assertThat(identidad.email()).isEqualTo("persona@ejemplo.com");
+        assertThat(identidad.app().name()).isEqualTo("admin");
+
+        // El claim 'iss' llega como java.lang.String en tiempo de ejecución
+        // para LAS DOS formas (comprobado con un decodificador aparte, sin el
+        // validador de emisor, para no interferir con la aserción de arriba):
+        // si el tipo difiriera entre formas, el mismo
+        // JwtClaimValidator<String> no podría ser correcto para ambas y este
+        // test estaría pasando por una razón distinta a la que dice probar.
+        var decodificadorSinValidarEmisor = NimbusJwtDecoder.withPublicKey(clave.toRSAPublicKey()).build();
+        var conEsquema = tokenFirmadoCon(clave, GOOGLE_ISS, List.of("cliente-admin"),
+                "persona@ejemplo.com", Instant.now().plus(1, ChronoUnit.HOURS));
+        Object issSinEsquema = decodificadorSinValidarEmisor.decode(sinEsquema).getClaim("iss");
+        Object issConEsquema = decodificadorSinValidarEmisor.decode(conEsquema).getClaim("iss");
+        assertThat(issSinEsquema).isInstanceOf(String.class);
+        assertThat(issConEsquema).isInstanceOf(String.class);
+    }
+
+    @Test
     void rechaza_un_emisor_ajeno_aunque_la_firma_sea_valida() {
         // Firmado con la clave correcta, pero un 'iss' que no es ninguna de las
         // dos formas legítimas de Google: sin validar 'iss', este token pasaría
