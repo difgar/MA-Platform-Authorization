@@ -92,19 +92,20 @@ class SecurityConfig {
      * así que setAllowedOriginPatterns(List.of("*")) con allowCredentials(true)
      * NO falla al arrancar aunque sea exactamente el mismo agujero que esa
      * validación existe para evitar: reflejar el Origin de cualquier llamador
-     * con Access-Control-Allow-Credentials: true. Por eso el '*' se rechaza
+     * con Access-Control-Allow-Credentials: true. Por eso el comodín se valida
      * aquí a mano, explícitamente, en vez de confiar en que Spring lo haga.
+     *
+     * Rechazar solo el string exacto '*' no basta: https://* es el mismo
+     * agujero con otro texto (coincide con cualquier origen https), y
+     * https://*.com casi lo mismo (coincide con cualquier origen de ese TLD).
+     * La regla real es sobre la POSICIÓN del comodín, no sobre su forma
+     * literal: validarOrigenes() exige al menos dos etiquetas después de un
+     * '*', así que https://*.mobile-americas.com pasa y https://*.com no.
      */
     @Bean
     CorsConfigurationSource corsConfigurationSource(CorsProperties props) {
         var origenes = props.allowedOrigins();
-        if (origenes.contains("*")) {
-            throw new IllegalStateException(
-                    "authorization.cors.allowed-origins no admite '*': con "
-                            + "allowCredentials(true) reflejaría el Origin de cualquier "
-                            + "llamador. Usa un patrón concreto, p.ej. "
-                            + "https://*.mobile-americas.com.");
-        }
+        validarOrigenes(origenes);
 
         var c = new CorsConfiguration();
         c.setAllowedOriginPatterns(origenes);
@@ -114,5 +115,46 @@ class SecurityConfig {
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
         return source;
+    }
+
+    /**
+     * Exige al menos dos etiquetas (separadas por punto) después del último
+     * '*' de cada origen, si lo tiene. Un origen sin comodín pasa siempre: es
+     * exacto, no un patrón que pueda abarcar de más.
+     *
+     * Dos etiquetas es una línea elegida a propósito, no un descuido: cubre
+     * el caso real de este servicio (subdominios bajo un dominio propio,
+     * https://*.mobile-americas.com) sin dejar pasar un comodín a nivel de
+     * TLD (https://*.com, que coincidiría con cualquier origen de ese TLD).
+     * NO persigue dominios de segundo nivel públicos como .co.uk
+     * (https://*.co.uk se aceptaría con esta regla): hacerlo bien exigiría
+     * una lista de sufijos públicos, desproporcionado para un servicio
+     * interno con un puñado de orígenes conocidos de antemano.
+     *
+     * Falla al arrancar, no en el primer preflight: una configuración mala se
+     * ve en el log de arranque, no como un CORS roto en producción reportado
+     * por un cliente.
+     */
+    private static void validarOrigenes(List<String> origenes) {
+        for (var origen : origenes) {
+            var comodin = origen.lastIndexOf('*');
+            if (comodin < 0) {
+                continue;
+            }
+            var sufijo = origen.substring(comodin + 1).replaceFirst(":\\d+$", "");
+            var etiquetas = java.util.Arrays.stream(sufijo.split("\\."))
+                    .filter(s -> !s.isBlank())
+                    .count();
+            if (etiquetas < 2) {
+                throw new IllegalStateException(
+                        "authorization.cors.allowed-origins rechaza '" + origen + "': un "
+                                + "comodín necesita al menos dos etiquetas después de él "
+                                + "(p.ej. https://*.mobile-americas.com), o abarca demasiados "
+                                + "orígenes distintos con Access-Control-Allow-Credentials: "
+                                + "true. Un comodín con una sola etiqueta detrás (o ninguna, "
+                                + "como '*' o 'https://*') coincide con cualquier origen de "
+                                + "ese TLD o esquema.");
+            }
+        }
     }
 }
