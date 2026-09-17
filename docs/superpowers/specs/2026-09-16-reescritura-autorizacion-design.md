@@ -302,7 +302,14 @@ resuelven consultando la base de datos por `user_id`.** Los claims del access
 token anterior no se leen, así que fabricar uno no aporta nada. El access token
 ni siquiera se envía en la renovación.
 
-Duraciones (configurables): access 15 min, refresh 12 h. Revocación de un rol:
+Duraciones (configurables): access 15 min, refresh 12 h **de inactividad, no de
+sesión absoluta**: cada rotación calcula `now + refreshTtl`, así que un cliente
+que renueve dentro de la ventana mantiene la sesión indefinidamente. Es la
+lectura estándar de la industria y es deliberada, pero la redacción anterior
+—"refresh 12 h" a secas— se leía como un tope de sesión. Si algún día se quiere
+ese tope, hace falta comprobar la antigüedad de la familia en `rotate()`.
+
+Revocación de un rol:
 efectiva en ≤ 15 min, o inmediata revocando la familia.
 
 ### 5.3 Cookies
@@ -510,6 +517,32 @@ cerrada por defecto. Despliegue arreglado (§9).
 **Fase 2 — Administración.** CRUD de las 5 entidades, `auth_audit`,
 `@PreAuthorize` por permiso, OpenAPI publicado.
 
+> ### ⚠️ Criterios de entrada de la fase 2 — no son recomendaciones
+>
+> Ambos salieron de la revisión final de la fase 1 y **tienen que estar antes de
+> que exista el primer endpoint protegido con `@PreAuthorize`**, no después.
+>
+> **1. `/v1/admin/**` debe exigir además que `aud` sea la aplicación `admin`.**
+> Las cadenas de autoridad **no están cualificadas por aplicación**, así que
+> `aud` es lo único que separa los espacios de nombres. El camino concreto, con
+> los datos ya sembrados: `usuario2` tiene `analyst@admin` —que es `*:leer`, solo
+> lectura en `admin`— y además `admin@fgf`, que es `*:*`. El catálogo de `fgf` es
+> `{usuarios}`, luego un token con `aud: fgf` lleva
+> `permissions: [usuarios:crear, usuarios:leer, usuarios:editar, usuarios:borrar]`.
+> Sin ligar `aud` al endpoint, `hasAuthority('usuarios:borrar')` sobre el API de
+> administración quedaría satisfecho por ese token: **un analista de `admin`
+> podría borrar usuarios de `admin`.** Es la escalada de §1.1 por otra puerta.
+>
+> La fase 1 solo comprueba **presencia** de `aud` en `selfJwtDecoder`, a
+> propósito: `/v1/auth/me` sirve tokens de cualquier aplicación por diseño, así
+> que restringir `aud` globalmente lo rompería, y en la fase 1 no existe ni un
+> `hasAuthority` que pudiera colisionar. La ligadura correcta es por endpoint.
+>
+> **2. El rethrow de `AccessDeniedException` en `ApiExceptionHandler` necesita
+> test.** Está cableado y verificado por inspección, pero no puede ejercitarse
+> sin un endpoint protegido. Si está mal, una denegación de autorización se
+> reporta como **500 en lugar de 403** en cuanto llegue el CRUD.
+
 **Fase 3 — Integración.** Alta de la app `trafficflow` con sus permisos;
 *resource server* en `MA-TrafficFlow-Backend` (hoy sin `spring-boot-starter-security`,
 pero con `serviceIdentity: bearer JWT` ya declarado en
@@ -537,5 +570,18 @@ y adaptación de `MA-Platform-UI` a las cookies `HttpOnly` (§5.3).
   no está en este alcance).
 - Migración de producción de MySQL a PostgreSQL: este diseño la hace posible sin
   cambios de código —solo URL y driver— pero ejecutarla es un trabajo aparte.
+
+  ⚠️ Corregido tras la revisión final: esa afirmación era **falsa** tal como
+  estaba. La colación por defecto de MySQL (`utf8mb4_0900_ai_ci`) hace
+  `findByEmail` y `UNIQUE (email)` insensibles a mayúsculas; PostgreSQL es
+  sensible. Verificado contra contenedores reales:
+  `findByEmail("USUARIO1@PENDIENTE.LOCAL")` devolvía presente en MySQL y ausente
+  en PostgreSQL. Cualquier usuario cuyo casing almacenado difiriera del que envía
+  Google habría dado 403 tras la migración, en silencio.
+  Resuelto normalizando el email a minúsculas en la frontera
+  (`GoogleIdentityVerifier` y `UserRepositoryAdapter.findByEmail`, con
+  `Locale.ROOT`), con un test de doble motor que compara las dos respuestas.
+  **Los identificadores son insensibles a mayúsculas por decisión de diseño**, no
+  por accidente de colación — que es lo que eran antes.
 - Flujos OAuth2 para terceros: se descartó Spring Authorization Server por
   desproporcionado para dos SPAs internas.

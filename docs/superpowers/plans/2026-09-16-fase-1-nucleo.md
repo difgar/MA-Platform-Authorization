@@ -6,7 +6,7 @@
 
 **Architecture:** Puertos y adaptadores. `domain/` son records de Java sin anotaciones de framework y `application/` son casos de uso que solo conocen puertos; ambos se testean sin Spring y sin base de datos. Los adaptadores (JPA, Google, firma de tokens) quedan en `adapter/`. La identidad la pone Google; este servicio la traduce a un token propio firmado con clave asimétrica cuya pública se publica en un JWKS.
 
-**Tech Stack:** Java 25 (Temurin) · Spring Boot 4.1.1 · Spring Framework 7.0.9 · Spring Security 7 · Gradle 9.6 · Flyway · Hibernate 7 · Nimbus JOSE+JWT (vía `spring-security-oauth2-jose`) · Testcontainers · JUnit 5 · MySQL 8.4 y PostgreSQL 17
+**Tech Stack:** Java 25 (Temurin) · Spring Boot 4.1.1 · Spring Framework 7.0.9 · Spring Security 7 · Gradle 9.6.1 · Flyway · Hibernate 7 · Nimbus JOSE+JWT (vía `spring-security-oauth2-jose`) · Testcontainers · JUnit 5 · MySQL 8.4 y PostgreSQL 17
 
 **Spec:** `docs/superpowers/specs/2026-09-16-reescritura-autorizacion-design.md`
 
@@ -16,7 +16,7 @@
 
 Estos requisitos aplican a **todas** las tareas:
 
-- **Java 25**, Spring Boot **4.1.1**, Gradle **9.6**. No usar *preview features* (obligarían a `--enable-preview` en ejecución). springdoc-openapi **3.1.1** es la versión para Boot 4, pero **no entra en esta fase**: el contrato OpenAPI se publica en la fase 2, con el CRUD.
+- **Java 25**, Spring Boot **4.1.1**, Gradle **9.6.1**. No usar *preview features* (obligarían a `--enable-preview` en ejecución). springdoc-openapi **3.1.1** es la versión para Boot 4, pero **no entra en esta fase**: el contrato OpenAPI se publica en la fase 2, con el CRUD.
 - **Jackson 3** es el de Boot 4: los paquetes son `tools.jackson.*`, no `com.fasterxml.jackson.databind.*`. Las anotaciones (`@JsonProperty`, `@JsonIgnore`) siguen en `com.fasterxml.jackson.annotation`. **No declarar un `ObjectMapper` propio**: Boot lo autoconfigura.
 - **`domain/` y `application/` no importan `jakarta.*` ni `org.springframework.*`.** Si un test de esas capas necesita un contenedor, la frontera está mal puesta.
 - **Un único juego de migraciones Flyway.** Solo estos tipos, que MySQL 8 y PostgreSQL 17 aceptan con sintaxis idéntica: `VARCHAR`, `BIGINT`, `BOOLEAN`, `TIMESTAMP(6)`, `TEXT`. Prohibidos: `AUTO_INCREMENT`, `IDENTITY`, `JSON`/`jsonb`, `ENUM`, `DEFAULT CHARSET=`, `ENGINE=`.
@@ -52,7 +52,7 @@ Estos requisitos aplican a **todas** las tareas:
 
 ---
 
-### Task 1: Toolchain — Gradle 9.6, Boot 4.1.1, Java 25
+### Task 1: Toolchain — Gradle 9.6.1, Boot 4.1.1, Java 25
 
 El código actual no compila bajo Boot 4 (Jackson 3 cambia paquetes, Jakarta EE 11 cambia Hibernate). Esta tarea vacía `src/` y deja un esqueleto que compila y testea. El código anterior queda en el historial de git y en `origin/develop`.
 
@@ -3929,7 +3929,19 @@ Estos **no** los puede hacer el plan y hay que coordinarlos:
 4. **Poner los emails reales** de los dos usuarios, por el mismo motivo.
 5. **Crear el repositorio de Artifact Registry** y **reapuntar los *triggers*** de
    Cloud Build, que se configuran fuera de git.
-6. **Crear la base de datos** con `utf8mb4` en MySQL.
+6. **Crear una base de datos NUEVA Y VACÍA** con `utf8mb4` en MySQL, y
+   repuntar `DB_MA_PLATFORM_URL` del ConfigMap a ella.
+   ⚠️ Corregido tras la revisión final. El ConfigMap apuntaba a
+   `ma_platform_auth`, el esquema que poblaba el servicio anterior con
+   `generate-ddl: true` y del que salió el volcado que reproduce `V2`. Flyway,
+   con `baseline-on-migrate` en su valor por defecto (`false`), encuentra un
+   esquema no vacío sin tabla de historia y **aborta**: el contexto falla, el pod
+   nunca pasa la probe y el servicio queda inalcanzable — el mismo resultado que
+   esta reescritura existe para eliminar, llegando por el otro lado. Ni este
+   paso ni el README lo decían.
+   **No usar `baseline-on-migrate: true` para sortearlo**: saltaría `V1` en
+   silencio y dejaría la aplicación corriendo contra las tablas viejas. Falla
+   abierto donde ahora falla cerrado.
 
 ## Después de esta fase
 
