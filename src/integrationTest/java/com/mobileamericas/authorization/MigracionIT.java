@@ -19,12 +19,22 @@ public abstract class MigracionIT extends BaseIT {
 
     @Test
     void las_migraciones_crean_las_ocho_tablas() {
-        for (var tabla : new String[]{
+        // isGreaterThanOrEqualTo(0L) sobre un count(*) es tautológico: cualquier
+        // consulta que no lance excepción lo cumple, exista la tabla o no haga
+        // falta que exista. information_schema.tables sí distingue "existe" de
+        // "no existe", y funciona igual en los dos motores sin filtrar por
+        // esquema: filtrar por el prefijo 'auth_' basta, porque ninguna tabla
+        // de sistema de ninguno de los dos motores lo usa.
+        var tablas = jdbc.sql("""
+                        SELECT table_name FROM information_schema.tables
+                         WHERE table_name LIKE 'auth_%'
+                        """)
+                .query(String.class).list();
+
+        assertThat(tablas).extracting(String::toLowerCase).containsExactlyInAnyOrder(
                 "auth_app", "auth_permission", "auth_role", "auth_user",
                 "auth_user_role", "auth_role_permission",
-                "auth_refresh_token", "auth_audit"}) {
-            assertThat(contar(tabla)).as("tabla %s", tabla).isGreaterThanOrEqualTo(0L);
-        }
+                "auth_refresh_token", "auth_audit");
     }
 
     @Test

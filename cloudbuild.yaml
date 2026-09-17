@@ -8,12 +8,14 @@ steps:
   # el socket montado, si ese es el caso de este proyecto de Cloud Build;
   # compruébalo antes del primer despliegue en vez de suponerlo).
   - name: 'gradle:jdk25'
-    entrypoint: 'gradle'
+    entrypoint: './gradlew'
     args: ['test']
     id: Test
   - name: 'gradle:jdk25'
-    entrypoint: 'gradle'
-    args: ['bootJar','-Denv=${_ENVIRONMENT}']
+    entrypoint: './gradlew'
+    # Sin '-Denv=${_ENVIRONMENT}': nada lo lee desde que se quitó el bloque
+    # bootRun.
+    args: ['bootJar']
   - name: gcr.io/cloud-builders/docker
     args:
       - build

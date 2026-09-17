@@ -24,6 +24,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Cableado de beans de la aplicación.
@@ -83,12 +84,29 @@ public class BeansConfig {
      * que ocurre como mucho 15 minutos después (la duración del access token).
      * Los consumidores externos no tienen ese límite: leen el JWKS completo
      * (JwksController), que sí publica todas las claves vigentes.
+     *
+     * Solo se añade una comprobación de PRESENCIA de 'aud': rechaza un token
+     * cuyo 'aud' venga ausente o vacío. JwtValidators.createDefaultWithIssuer()
+     * comprueba 'exp', 'nbf' e 'iss', pero nunca 'aud', y las autoridades no
+     * llevan el nombre de la app (p.ej. 'usuarios:borrar', no
+     * 'admin:usuarios:borrar'), así que 'aud' es lo único que separaría los
+     * espacios de nombres entre apps si algún día hubiera un
+     * hasAuthority()/@PreAuthorize aquí. HOY no lo hay (verificado: ningún
+     * hasAuthority ni @PreAuthorize en src/main), así que esa restricción de
+     * VALOR pertenece al endpoint que lo necesite, no a este decodificador
+     * compartido por /v1/auth/me para CUALQUIER app (ver
+     * "Criterios de entrada de la fase 2" en README.md). Consultar
+     * AppRepository desde aquí para validar el valor costaría una consulta a
+     * la base de datos por token decodificado y arriesgaría un ciclo de beans,
+     * sin ninguna comprobación de autoridad hoy que lo justifique.
      */
     @Bean
     @Primary
     JwtDecoder selfJwtDecoder(JwtKeys keys, JwtProperties props) {
         var decoder = NimbusJwtDecoder.withPublicKey(keys.activePublicKey()).build();
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(props.issuer()));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(props.issuer()),
+                new JwtClaimValidator<List<String>>("aud", aud -> aud != null && !aud.isEmpty())));
         return decoder;
     }
 

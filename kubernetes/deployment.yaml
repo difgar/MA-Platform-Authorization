@@ -11,7 +11,14 @@ data:
   ENVIRONMENT: "production"
   SERVER_PORT: "8081"
   MANAGEMENT_SERVER_PORT: "18081"
-  DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_platform_auth"
+  # 'ma_auth' es un esquema NUEVO y vacío, distinto de 'ma_platform_auth' (el
+  # que poblaba el servicio antiguo con generate-ddl:true, y del que salió el
+  # volcado de V2__datos_iniciales.sql). Flyway aborta si el esquema no está
+  # vacío y no tiene flyway_schema_history: apuntar aquí al esquema viejo
+  # tumbaba el primer despliegue. baseline-on-migrate NO se activa a propósito
+  # (ver README.md, sección Despliegue): saltaría V1 en silencio y dejaría la
+  # app corriendo contra las tablas viejas.
+  DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_auth"
 ---
 apiVersion: "apps/v1"
 kind: "Deployment"
@@ -38,7 +45,11 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: "ma-authorization"
-          image: "gcr.io/sms-ma-platform/ma-authorization"
+          # gke-deploy --image (cloudbuild.yaml) sobreescribe esto en cada
+          # despliegue real; se mantiene coherente con _IMAGE_NAME de
+          # cloudbuild.yaml (Artifact Registry) para no dejar la única
+          # referencia viva al registro de gcr.io ya retirado.
+          image: "us-east1-docker.pkg.dev/sms-ma-platform/ma-platform/ma-authorization"
           ports:
             - name: "http"
               containerPort: 8081

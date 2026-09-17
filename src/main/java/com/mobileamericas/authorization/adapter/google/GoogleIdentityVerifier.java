@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -63,6 +64,24 @@ public class GoogleIdentityVerifier implements IdentityVerifier {
             throw new IdentityRejectedException("El token de Google no trae email.");
         }
 
-        return new VerifiedIdentity(email, jwt.getClaimAsString("name"), app);
+        // 'email' es la única clave de unión con auth_user y, por tanto, con
+        // todo rol y permiso. La guía de Google sobre verificación de ID token
+        // es explícita: email_verified: false significa que ese email no
+        // prueba propiedad. Un claim AUSENTE se trata igual que 'false' (la
+        // lectura más segura): tratarlo como verificado por omisión confiaría
+        // precisamente cuando menos garantías hay.
+        var emailVerificado = jwt.getClaimAsBoolean("email_verified");
+        if (emailVerificado == null || !emailVerificado) {
+            throw new IdentityRejectedException("El email de Google no está verificado.");
+        }
+
+        // Normalizado a minúsculas aquí, en el límite: MySQL (utf8mb4_0900_ai_ci)
+        // compara 'email' sin distinguir mayúsculas y PostgreSQL sí, así que sin
+        // esto el mismo login podría autenticar en un motor y no en el otro.
+        // Locale.ROOT: con el locale turco, toLowerCase() convertiría 'I' en
+        // 'ı' en vez de 'i'.
+        var emailNormalizado = email.toLowerCase(Locale.ROOT);
+
+        return new VerifiedIdentity(emailNormalizado, jwt.getClaimAsString("name"), app);
     }
 }

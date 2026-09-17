@@ -36,6 +36,20 @@ public abstract class RepositoriosIT extends BaseIT {
                 .doesNotContain("*");
     }
 
+    /**
+     * Verificado empíricamente contra los dos motores antes de este arreglo:
+     * MySQL (utf8mb4_0900_ai_ci) encontraba el usuario buscando en mayúsculas;
+     * PostgreSQL no. Esta es la prueba que la suite de dos motores existe para
+     * exigir: el mismo comportamiento, y no por casualidad, en ambos.
+     */
+    @Test
+    void encuentra_el_usuario_por_email_sin_distinguir_mayusculas() {
+        var usuario = usuarios.findByEmail("USUARIO1@PENDIENTE.LOCAL");
+
+        assertThat(usuario).isPresent();
+        assertThat(usuario.get().email()).isEqualTo("usuario1@pendiente.local");
+    }
+
     @Test
     void carga_el_usuario_con_sus_roles_y_permisos() {
         var usuario = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();

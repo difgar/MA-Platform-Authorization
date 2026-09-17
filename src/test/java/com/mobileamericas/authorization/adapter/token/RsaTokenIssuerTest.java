@@ -20,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -155,12 +156,24 @@ class RsaTokenIssuerTest {
         // NOTA: publicJwks() devuelve un java.util.Map de verdad (nimbus-jose-jwt
         // 10.x ya no usa net.minidev.json.JSONObject), así que su toString() no es
         // JSON ('{keys=[{kty=RSA, ...}]}', con '=' y sin comillas). Se serializa
-        // con el mismo Jackson que expondría el endpoint del JWKS para comprobar
-        // el JSON real que vería un consumidor.
-        var jwks = new ObjectMapper().writeValueAsString(JwtKeys.forTesting(clave).publicJwks());
+        // con el mismo Jackson que expondría el endpoint del JWKS y se vuelve a
+        // parsear, para comprobar el objeto real que reconstruiría un consumidor
+        // -no una subcadena del JSON, que ni distingue una clave de un valor ni
+        // cubre 'dp', 'dq' o 'qi' (los otros tres componentes privados de una
+        // clave RSA en formato CRT que 'd', 'p' y 'q' por sí solos no cubren).
+        var mapper = new ObjectMapper();
+        var json = mapper.writeValueAsString(JwtKeys.forTesting(clave).publicJwks());
 
-        // 'd' es el exponente privado en una JWK RSA; 'p' y 'q' los factores.
-        assertThat(jwks).contains("\"n\":").contains("\"e\":").contains("test-2026-09");
-        assertThat(jwks).doesNotContain("\"d\":").doesNotContain("\"p\":").doesNotContain("\"q\":");
+        @SuppressWarnings("unchecked")
+        var jwks = (Map<String, Object>) mapper.readValue(json, Map.class);
+        @SuppressWarnings("unchecked")
+        var claves = (List<Map<String, Object>>) jwks.get("keys");
+
+        assertThat(claves).hasSize(1);
+        var clavePublicada = claves.getFirst();
+        assertThat(clavePublicada).containsKeys("n", "e").containsEntry("kid", "test-2026-09");
+        assertThat(clavePublicada.keySet())
+                .as("ningún componente privado de la clave RSA debe salir por el JWKS público")
+                .doesNotContainAnyElementsOf(Set.of("d", "p", "q", "dp", "dq", "qi"));
     }
 }

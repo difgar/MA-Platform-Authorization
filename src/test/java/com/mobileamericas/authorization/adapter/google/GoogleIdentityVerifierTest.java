@@ -83,6 +83,15 @@ class GoogleIdentityVerifierTest {
     }
 
     private String tokenFirmadoCon(RSAKey clave, String iss, List<String> aud, String email, Instant expira) {
+        return tokenFirmadoCon(clave, iss, aud, email, expira, Boolean.TRUE);
+    }
+
+    /**
+     * @param emailVerified valor del claim 'email_verified'; {@code null} lo omite
+     *                       por completo (para probar el caso "claim ausente").
+     */
+    private String tokenFirmadoCon(RSAKey clave, String iss, List<String> aud, String email, Instant expira,
+                                    Boolean emailVerified) {
         var encoder = new NimbusJwtEncoder(new com.nimbusds.jose.jwk.source.ImmutableJWKSet<>(
                 new com.nimbusds.jose.jwk.JWKSet(clave)));
         var builder = JwtClaimsSet.builder()
@@ -98,6 +107,9 @@ class GoogleIdentityVerifierTest {
         }
         if (email != null) {
             builder.claim("email", email).claim("name", "Persona de Prueba");
+            if (emailVerified != null) {
+                builder.claim("email_verified", emailVerified);
+            }
         }
         var header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(clave.getKeyID()).build();
         return encoder.encode(JwtEncoderParameters.from(header, builder.build())).getTokenValue();
@@ -233,5 +245,43 @@ class GoogleIdentityVerifierTest {
         assertThatThrownBy(() -> verificador.verify(sinEmail))
                 .isInstanceOf(IdentityVerifier.IdentityRejectedException.class)
                 .hasMessageContaining("email");
+    }
+
+    @Test
+    void rechaza_un_email_no_verificado() {
+        // La guía de Google sobre verificación de ID token es explícita:
+        // email_verified: false significa que ese email no prueba propiedad.
+        var noVerificado = tokenFirmadoCon(clave, GOOGLE_ISS, List.of("cliente-admin"),
+                "persona@ejemplo.com", Instant.now().plus(1, ChronoUnit.HOURS), false);
+
+        assertThatThrownBy(() -> verificador.verify(noVerificado))
+                .isInstanceOf(IdentityVerifier.IdentityRejectedException.class)
+                .hasMessageContaining("verificad");
+    }
+
+    @Test
+    void rechaza_un_token_sin_el_claim_email_verified() {
+        // Ausente se trata como no verificado, no como verificado por omisión:
+        // es la lectura más segura para el único join key con auth_user.
+        var sinClaim = tokenFirmadoCon(clave, GOOGLE_ISS, List.of("cliente-admin"),
+                "persona@ejemplo.com", Instant.now().plus(1, ChronoUnit.HOURS), null);
+
+        assertThatThrownBy(() -> verificador.verify(sinClaim))
+                .isInstanceOf(IdentityVerifier.IdentityRejectedException.class)
+                .hasMessageContaining("verificad");
+    }
+
+    @Test
+    void normaliza_el_email_a_minusculas() {
+        // MySQL (utf8mb4_0900_ai_ci) compara sin distinguir mayúsculas y
+        // PostgreSQL sí: sin normalizar aquí, el mismo login de Google
+        // autenticaría en un motor y no en el otro según cómo quedó guardado
+        // el email.
+        var token = tokenDeGoogleCon("cliente-admin", "Persona.Ejemplo@Gmail.COM",
+                Instant.now().plus(1, ChronoUnit.HOURS));
+
+        var identidad = verificador.verify(token);
+
+        assertThat(identidad.email()).isEqualTo("persona.ejemplo@gmail.com");
     }
 }

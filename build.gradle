@@ -48,9 +48,6 @@ dependencies {
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.postgresql:postgresql'
 
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     // Boot 4 modularizó también el soporte de pruebas: @WebMvcTest vive en este
@@ -95,4 +92,10 @@ tasks.named('check') {
 
 bootJar {
     archiveBaseName = 'ma-authorization'
+    // src/main/resources/dev-keys/active.jwk es una clave RSA privada completa,
+    // de desarrollo. Lo único que hoy impide que un pod de producción firme con
+    // una clave conocida públicamente es que el perfil 'dev' también apunta el
+    // datasource a localhost -fail-closed por accidente, no por diseño-, así
+    // que no tiene sentido empaquetarla en el artefacto que se despliega.
+    exclude 'dev-keys/**'
 }

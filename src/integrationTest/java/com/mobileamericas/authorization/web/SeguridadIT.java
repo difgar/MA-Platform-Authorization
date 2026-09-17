@@ -12,6 +12,11 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,8 +83,24 @@ public abstract class SeguridadIT {
         var r = http.getForEntity("/.well-known/jwks.json", String.class);
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(r.getBody()).contains("\"keys\"").contains("\"n\"").contains("\"e\"");
-        assertThat(r.getBody()).doesNotContain("\"d\"").doesNotContain("\"p\"");
+
+        // Se parsea el JSON real de la respuesta -no una subcadena, que ni
+        // distingue una clave de un valor ni cubre 'dp'/'dq'/'qi' (los otros
+        // tres componentes privados del formato CRT de una clave RSA que
+        // 'd'/'p'/'q' por sí solos no cubren)- y se comprueba el objeto que
+        // reconstruiría un consumidor real.
+        @SuppressWarnings("unchecked")
+        var jwks = (Map<String, Object>) new ObjectMapper().readValue(r.getBody(), Map.class);
+        @SuppressWarnings("unchecked")
+        var claves = (List<Map<String, Object>>) jwks.get("keys");
+
+        assertThat(claves).as("el JWKS debe traer al menos una clave").isNotEmpty();
+        for (var clave : claves) {
+            assertThat(clave).containsKeys("n", "e");
+            assertThat(clave.keySet())
+                    .as("ningún componente privado de la clave RSA debe salir por el JWKS público")
+                    .doesNotContainAnyElementsOf(Set.of("d", "p", "q", "dp", "dq", "qi"));
+        }
     }
 
     @Test

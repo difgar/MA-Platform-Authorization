@@ -84,4 +84,18 @@ class AccessGrantTest {
 
         assertThat(AccessGrant.of(inactivo, APP, CATALOGO).isEmpty()).isTrue();
     }
+
+    @Test
+    void una_app_desactivada_no_concede_nada() {
+        // No es redundante con el rechazo de GoogleIdentityVerifier para una
+        // app inactiva: ese solo corre en el login inicial. En el refresco
+        // (AuthenticationService.refresh() -> apps.findById -> AccessGrant.of),
+        // el verificador de Google nunca se ejecuta, así que esta rama es lo
+        // único que impide renovar una sesión existente después de que la app
+        // se desactive.
+        var appDesactivada = new App(APP_ID, "trafficflow", "cliente-123", "https://tf.example", false);
+        var usuario = usuarioCon(Set.of(Permission.parse("*:*")));
+
+        assertThat(AccessGrant.of(usuario, appDesactivada, CATALOGO).isEmpty()).isTrue();
+    }
 }

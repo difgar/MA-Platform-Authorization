@@ -3,6 +3,14 @@
 
 env.local
 
+# Claves de firma JWT y similares. Ignoradas por defecto para que la próxima
+# clave que alguien añada no acabe en git por accidente; las dos únicas
+# sancionadas (dev y de pruebas de integración) se listan explícitamente.
+*.jwk
+*.pem
+!src/main/resources/dev-keys/active.jwk
+!src/integrationTest/resources/test-keys/active.jwk
+
 ### Eclipse ###
 .metadata
 bin/

@@ -100,20 +100,36 @@ public abstract class RefreshTokenStoreIT extends BaseIT {
         assertThat(usuarios.findById(usuario.id())).contains(usuario);
     }
 
+    /**
+     * OJO con el nombre: esta prueba NO ejercita la rama de la carrera perdida
+     * (RefreshTokenStoreJpa.consume(): {@code jpa.marcarUsado(...) == 0}).
+     * Poner {@code used_at} ANTES de llamar a consume() hace que la lectura
+     * previa ({@code t.usedAt != null}) ya devuelva vacío -el mismo camino,
+     * byte a byte, que reutilizar_un_token_ya_consumido_revoca_la_familia_entera-,
+     * así que esto prueba la misma rama dos veces con nombres distintos, no la
+     * rama que el nombre anterior prometía.
+     *
+     * La rama real de la carrera perdida (otra transacción concurrente marca
+     * usado el token EN EL INTERVALO entre la lectura de este consume() y su
+     * propio UPDATE) no tiene hueco de prueba hoy: haría falta una costura
+     * (p.ej. poder interceptar entre la lectura y el UPDATE) que no existe, y
+     * no se inventa en esta tanda de arreglos. Mejor un nombre honesto y un
+     * hueco anotado que una prueba que afirma más de lo que comprueba.
+     */
     @Test
-    void perder_la_carrera_por_marcar_usado_se_trata_como_reutilizacion() {
+    void un_token_ya_marcado_usado_antes_de_consumirlo_se_trata_como_reutilizacion() {
         var emitido = store.issue(userId(), appId());
 
-        // Simula la carrera perdida: otra llamada concurrente ya marcó el
-        // token como usado, directamente en la base de datos, antes de que
-        // esta prueba invoque consume().
+        // No es la carrera perdida (ver el javadoc de arriba): esto marca
+        // 'used_at' ANTES de invocar consume(), así que se detecta en la
+        // lectura previa, no en el UPDATE que arbitra la carrera de verdad.
         jdbc.sql("UPDATE auth_refresh_token SET used_at = :ahora WHERE family_id = :fid")
                 .param("ahora", Timestamp.from(Instant.now()))
                 .param("fid", emitido.familyId().toString())
                 .update();
 
         assertThat(store.consume(emitido.value()))
-                .as("perder la carrera por marcar usado es indistinguible de la reutilización")
+                .as("un token ya marcado usado se trata como reutilización")
                 .isEmpty();
 
         var revocadas = jdbc.sql("""

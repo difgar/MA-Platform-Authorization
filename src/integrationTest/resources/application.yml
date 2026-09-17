@@ -1,6 +1,9 @@
 spring:
   jpa:
-    hibernate.ddl-auto: none   # Flyway manda; Hibernate ni siquiera valida
+    # Flyway manda; 'validate' convierte la coherencia entre las entidades JPA
+    # y el esquema real (en ambos motores) en algo que hace fallar el build,
+    # no solo en algo cierto en producción por casualidad.
+    hibernate.ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: true

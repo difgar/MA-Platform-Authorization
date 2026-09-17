@@ -156,5 +156,51 @@ repo. Puntos que importa no olvidar:
   el par de claves y el `Secret`, sembrarlo desde Secret Manager, poner los
   `google_client_id` y los emails reales en `auth_app`/`auth_user` (la
   migración deja marcadores `PENDIENTE-*` a propósito), crear el repositorio
-  de Artifact Registry y reapuntar los *triggers* de Cloud Build, y crear la
-  base de datos con `utf8mb4` en MySQL.
+  de Artifact Registry y reapuntar los *triggers* de Cloud Build, y crear el
+  esquema de base de datos apuntado por `DB_MA_PLATFORM_URL`
+  (`kubernetes/deployment.yaml`, hoy `ma_auth`).
+  - Ese esquema debe ser **nuevo y estar vacío**. Flyway detecta un esquema no
+    vacío sin `flyway_schema_history` y aborta el arranque en vez de
+    aplicarle `V1__esquema.sql` encima: el primer despliegue apuntó por error
+    a `ma_platform_auth` (el esquema del servicio antiguo, poblado con
+    `generate-ddl: true`, del que además sale el volcado de
+    `V2__datos_iniciales.sql`) y el pod nunca llegó a estar listo. No se
+    corrige con `spring.flyway.baseline-on-migrate: true`: eso saltaría `V1`
+    en silencio y dejaría la app corriendo contra las tablas del servicio
+    viejo — falla abierto donde hoy falla cerrado. La corrección es apuntar a
+    un esquema distinto y vacío.
+  - En MySQL, crear el esquema con `utf8mb4` **no basta por sí solo**: sigue
+    haciendo falta que sea un esquema nuevo, sin las tablas de
+    `ma_platform_auth`, para que Flyway pueda aplicar `V1` desde cero.
+
+## Criterios de entrada de la fase 2
+
+Antes de que se despliegue el primer endpoint protegido con `@PreAuthorize`
+(por ejemplo, bajo `/v1/admin/**`):
+
+- Ese endpoint debe exigir, además de la autoridad concreta, que el `aud` del
+  token sea la app admin. `selfJwtDecoder` (`BeansConfig`) hoy solo valida que
+  `aud` esté presente y no vacío — una comprobación barata que detecta un
+  token malformado, no que aísla apps entre sí. Las autoridades del token
+  (`usuarios:borrar`, `*:*`, …) no llevan el nombre de la app: el `aud` es lo
+  único que separa esos espacios de nombres. Ejemplo real con los datos
+  sembrados en `V2__datos_iniciales.sql`: `usuario2` tiene `analyst@admin`
+  (solo lectura en `admin`) y `admin@fgf` (`*:*` en `fgf`); como el catálogo
+  de `fgf` es `{usuarios}`, un token con `aud=fgf` de `usuario2` lleva
+  `usuarios:borrar`. Sin comprobar también `aud=admin`,
+  `hasAuthority('usuarios:borrar')` en `/v1/admin/**` lo aceptaría: un
+  analista de solo lectura en `admin` podría borrar usuarios de `admin` con
+  un token emitido para `fgf`.
+  - Esto no se resuelve en `selfJwtDecoder`: haría falta consultar
+    `AppRepository` en cada validación (un golpe a la base de datos por
+    token) o acoplar el decodificador al nombre de una app concreta, lo que
+    rompería `/v1/auth/me` (sirve tokens de cualquier app: `admin`, `fgf` y,
+    en fase 3, `trafficflow`; `MeController` devuelve `audiencia.getFirst()`
+    tal cual). La restricción de `aud` pertenece al endpoint protegido, no al
+    decodificador compartido.
+- El camino `@PreAuthorize` → `AccessDeniedException` → `ApiExceptionHandler`
+  no tiene ninguna prueba hoy porque no existe ningún endpoint que lo
+  ejerza. En cuanto se añada el primero, necesita una prueba que confirme
+  que ese camino de rechazo también produce una respuesta coherente (sin
+  detalles internos, código de estado correcto), no solo el camino de
+  autenticación que ya cubre `SeguridadIT`.
