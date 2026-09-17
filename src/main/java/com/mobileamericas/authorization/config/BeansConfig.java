@@ -4,7 +4,12 @@ import com.mobileamericas.authorization.adapter.google.GoogleProperties;
 import com.mobileamericas.authorization.adapter.token.JwtKeys;
 import com.mobileamericas.authorization.adapter.token.JwtProperties;
 import com.mobileamericas.authorization.adapter.token.RsaTokenIssuer;
+import com.mobileamericas.authorization.application.port.AppRepository;
+import com.mobileamericas.authorization.application.port.IdentityVerifier;
+import com.mobileamericas.authorization.application.port.RefreshTokenStore;
 import com.mobileamericas.authorization.application.port.TokenIssuer;
+import com.mobileamericas.authorization.application.port.UserRepository;
+import com.mobileamericas.authorization.application.service.AuthenticationService;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -64,6 +69,18 @@ public class BeansConfig {
                 new JwtClaimValidator<String>("iss",
                         iss -> iss != null && props.acceptedIssuers().contains(iss))));
         return decoder;
+    }
+
+    /**
+     * AuthenticationService no lleva anotación de Spring: application/ no
+     * puede importar el framework. Se cablea aquí, a mano, a partir de sus
+     * cinco colaboradores.
+     */
+    @Bean
+    AuthenticationService authenticationService(IdentityVerifier identidades, UserRepository usuarios,
+                                                 AppRepository apps, TokenIssuer emisor,
+                                                 RefreshTokenStore refrescos) {
+        return new AuthenticationService(identidades, usuarios, apps, emisor, refrescos);
     }
 
     private String leer(ResourceLoader loader, String location) {
