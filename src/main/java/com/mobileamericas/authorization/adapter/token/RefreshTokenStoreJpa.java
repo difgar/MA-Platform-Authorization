@@ -40,6 +40,13 @@ class RefreshTokenStoreJpa implements RefreshTokenStore {
         var anterior = jpa.findFirstByFamilyIdOrderByCreatedAtDesc(familyId.toString())
                 .orElseThrow(() -> new IllegalStateException("Familia desconocida: " + familyId));
 
+        // La revocación es definitiva para la familia: ni la detección de
+        // reutilización ni un logout deben poder resucitarla con un token
+        // nuevo y sin revocar.
+        if (anterior.revokedAt != null) {
+            throw new IllegalStateException("Familia revocada: " + familyId);
+        }
+
         return crear(UUID.fromString(anterior.userId), UUID.fromString(anterior.appId), familyId);
     }
 
@@ -72,8 +79,10 @@ class RefreshTokenStoreJpa implements RefreshTokenStore {
         var t = encontrado.get();
         var ahora = Instant.now();
 
-        // Reutilización: el token ya se usó. Alguien tiene una copia, así que
-        // cae la familia entera, incluido el token legítimo en circulación.
+        // Reutilización ya visible en la lectura: el token ya estaba marcado
+        // usado antes de que esta transacción empezara. Alguien tiene una
+        // copia, así que cae la familia entera, incluido el token legítimo
+        // en circulación.
         if (t.usedAt != null) {
             jpa.revokeFamily(t.familyId, ahora);
             return Optional.empty();
@@ -82,8 +91,14 @@ class RefreshTokenStoreJpa implements RefreshTokenStore {
             return Optional.empty();
         }
 
-        t.usedAt = ahora;
-        jpa.save(t);
+        // La transición de estado es el árbitro, no la lectura de arriba: si
+        // otra llamada concurrente ganó la carrera entre esa lectura y este
+        // UPDATE, marcarUsado() afecta cero filas. Perder la carrera es
+        // indistinguible de la reutilización y se trata igual.
+        if (jpa.marcarUsado(t.id, ahora) == 0) {
+            jpa.revokeFamily(t.familyId, ahora);
+            return Optional.empty();
+        }
 
         return Optional.of(new RefreshSubject(
                 UUID.fromString(t.userId), UUID.fromString(t.appId), UUID.fromString(t.familyId)));

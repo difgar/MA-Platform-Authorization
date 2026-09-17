@@ -12,7 +12,14 @@ import java.util.UUID;
  */
 public interface RefreshTokenStore {
 
-    record IssuedRefreshToken(String value, UUID familyId, Instant expiresAt) {}
+    record IssuedRefreshToken(String value, UUID familyId, Instant expiresAt) {
+
+        /** Redactado a propósito: esto es lo que un log.debug o un volcado de excepción imprimiría. */
+        @Override
+        public String toString() {
+            return "IssuedRefreshToken[value=REDACTED, familyId=%s, expiresAt=%s]".formatted(familyId, expiresAt);
+        }
+    }
 
     record RefreshSubject(UUID userId, UUID appId, UUID familyId) {}
 

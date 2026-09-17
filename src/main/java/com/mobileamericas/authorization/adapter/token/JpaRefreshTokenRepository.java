@@ -15,12 +15,26 @@ interface JpaRefreshTokenRepository extends JpaRepository<RefreshTokenEntity, St
     /** El sujeto de rotate() sale del registro más reciente de la familia. */
     Optional<RefreshTokenEntity> findFirstByFamilyIdOrderByCreatedAtDesc(String familyId);
 
-    // flushAutomatically: por si el llamador cambió alguna entidad de esta
-    // familia antes de invocar esto en la misma transacción, esos cambios se
-    // vuelcan primero. clearAutomatically: para que cualquier entidad de esta
-    // familia que se lea DESPUÉS, en la misma transacción, se recargue desde
-    // la base de datos en vez de devolver la copia en caché de primer nivel,
-    // que este UPDATE masivo no actualiza.
+    /**
+     * Transición de estado condicionada, no una lectura previa: si el UPDATE
+     * afecta cero filas, es que otra llamada concurrente ya marcó el token
+     * como usado entre nuestra lectura y este UPDATE. Perder esa carrera es
+     * indistinguible de la reutilización y {@code consume()} lo trata igual.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE RefreshTokenEntity t SET t.usedAt = :ahora WHERE t.id = :id AND t.usedAt IS NULL")
+    int marcarUsado(@Param("id") String id, @Param("ahora") Instant ahora);
+
+    // flushAutomatically: RefreshTokenEntity usa un @Id asignado, no generado,
+    // así que un save() reciente en esta misma transacción (por ejemplo el
+    // INSERT de un rotate() previo) puede seguir sin volcarse a la base de
+    // datos; sin este flag, esa fila recién creada escaparía a este UPDATE
+    // masivo, dejando un token vivo en una familia que se acaba de revocar.
+    // clearAutomatically: desasocia TODO el contexto de persistencia de esta
+    // transacción, no solo las filas de esta familia, así que cualquier otra
+    // entidad gestionada que estuviera en vuelo queda desasociada y sus
+    // cambios posteriores se pierden al hacer commit. Se acepta ese coste
+    // porque revokeFamily() se usa cerca del final de la transacción.
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             UPDATE RefreshTokenEntity t SET t.revokedAt = :ahora

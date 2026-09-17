@@ -7,9 +7,12 @@ import com.mobileamericas.authorization.application.port.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public abstract class RefreshTokenStoreIT extends BaseIT {
 
@@ -95,5 +98,65 @@ public abstract class RefreshTokenStoreIT extends BaseIT {
 
         assertThat(apps.findById(app.id())).contains(app);
         assertThat(usuarios.findById(usuario.id())).contains(usuario);
+    }
+
+    @Test
+    void perder_la_carrera_por_marcar_usado_se_trata_como_reutilizacion() {
+        var emitido = store.issue(userId(), appId());
+
+        // Simula la carrera perdida: otra llamada concurrente ya marcó el
+        // token como usado, directamente en la base de datos, antes de que
+        // esta prueba invoque consume().
+        jdbc.sql("UPDATE auth_refresh_token SET used_at = :ahora WHERE family_id = :fid")
+                .param("ahora", Timestamp.from(Instant.now()))
+                .param("fid", emitido.familyId().toString())
+                .update();
+
+        assertThat(store.consume(emitido.value()))
+                .as("perder la carrera por marcar usado es indistinguible de la reutilización")
+                .isEmpty();
+
+        var revocadas = jdbc.sql("""
+                        SELECT count(*) FROM auth_refresh_token
+                         WHERE family_id = :fid AND revoked_at IS NOT NULL
+                        """)
+                .param("fid", emitido.familyId().toString())
+                .query(Long.class).single();
+        assertThat(revocadas).as("la familia queda revocada").isEqualTo(1L);
+    }
+
+    @Test
+    void la_rotacion_rechaza_una_familia_ya_revocada() {
+        var emitido = store.issue(userId(), appId());
+        store.revokeFamily(emitido.familyId());
+
+        assertThatThrownBy(() -> store.rotate(emitido.familyId()))
+                .as("la revocación es definitiva para la familia")
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void un_token_expirado_no_se_consume_aunque_no_este_revocado() {
+        var emitido = store.issue(userId(), appId());
+
+        jdbc.sql("UPDATE auth_refresh_token SET expires_at = :pasado WHERE family_id = :fid")
+                .param("pasado", Timestamp.from(Instant.now().minusSeconds(60)))
+                .param("fid", emitido.familyId().toString())
+                .update();
+
+        // La familia no está revocada: si el test pasara igual habiendo
+        // invertido o borrado la comparación de expiración, sería porque
+        // el cortocircuito lo cuela por la revocación, no por la expiración.
+        var revocadas = jdbc.sql("""
+                        SELECT count(*) FROM auth_refresh_token
+                         WHERE family_id = :fid AND revoked_at IS NOT NULL
+                        """)
+                .param("fid", emitido.familyId().toString())
+                .query(Long.class).single();
+        assertThat(revocadas).as("no debe pasar por la rama de revocación").isZero();
+
+        assertThat(store.consume(emitido.value()))
+                .as("un token expirado no vale aunque no esté revocado")
+                .isEmpty();
     }
 }
