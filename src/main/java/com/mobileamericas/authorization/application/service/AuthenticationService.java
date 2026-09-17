@@ -104,18 +104,20 @@ public class AuthenticationService {
     }
 
     /**
-     * @throws AccessDeniedException si el usuario no tiene ningún rol en esta
-     *         app: ni el que nunca tuvo acceso, ni al que se lo quitaron por
-     *         completo. Se mira roleNames() y no isEmpty(): un rol con cero
-     *         permisos sigue siendo un rol asignado, y ese caso debe emitir un
-     *         token sin autoridades (la renovación refleja la baja), no
-     *         rechazar la renovación.
+     * @throws AccessDeniedException si el grant queda vacío: sin rol en esta
+     *         app, o con rol pero sin ningún permiso que se traduzca en
+     *         autoridad. El sistema anterior (GoogleOAuthServiceImpl) negaba
+     *         exactamente por esta condición, y AccessGrant.isEmpty() (tarea 2)
+     *         replica esa regla a propósito. Un token sin autoridades no se
+     *         emite nunca: sería una sesión válida e inútil, y sería
+     *         precisamente el fallo silencioso que describe la spec §4.2 para
+     *         un catálogo de recursos vacío con '*:*'.
      */
     private AccessGrant grantDe(User usuario, App app) {
         var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
-        if (grant.roleNames().isEmpty()) {
+        if (grant.isEmpty()) {
             throw new AccessDeniedException(
-                    "El usuario no tiene roles en '%s'.".formatted(app.name()));
+                    "El usuario no tiene roles ni permisos en '%s'.".formatted(app.name()));
         }
         return grant;
     }

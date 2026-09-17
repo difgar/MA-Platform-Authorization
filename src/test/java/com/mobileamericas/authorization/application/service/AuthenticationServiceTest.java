@@ -133,17 +133,25 @@ class AuthenticationServiceTest {
         //
         // Aquí refresh() no recibe el access token siquiera, y los permisos
         // salen del repositorio. Si alguien degrada al usuario en la base de
-        // datos, la renovación lo refleja.
+        // datos, la renovación lo refleja. Se reduce en vez de eliminar del
+        // todo: eliminar todos los permisos deja el grant vacío, y un grant
+        // vacío se rechaza (es la misma regla que protege contra un catálogo
+        // de recursos vacío expandiendo '*:*' a nada). Reducir de '*:*' a un
+        // único permiso concreto prueba la relectura sin chocar con esa regla,
+        // y lo hace comprobando el CONTENIDO del token nuevo, no solo que algo
+        // cambió.
+        usuarioEnBd = usuarioCon(Set.of(Permission.parse("*:*")));
         var primero = servicio.authenticate("token-de-google");
-        assertThat(tokensEmitidos.get(primero.accessToken())).isEqualTo("campanas:leer");
+        assertThat(tokensEmitidos.get(primero.accessToken()))
+                .isEqualTo("campanas:borrar,campanas:crear,campanas:editar,campanas:leer");
 
-        usuarioEnBd = usuarioCon(Set.of());   // le quitan el permiso
+        usuarioEnBd = usuarioCon(Set.of(Permission.parse("campanas:leer")));   // le degradan el permiso
 
         var renovado = servicio.refresh(primero.refreshToken());
 
         assertThat(tokensEmitidos.get(renovado.accessToken()))
                 .as("los permisos se releen de la BD, no se copian del token anterior")
-                .isEmpty();
+                .isEqualTo("campanas:leer");
     }
 
     @Test
@@ -156,6 +164,22 @@ class AuthenticationServiceTest {
 
         assertThat(tokensEmitidos.get(renovado.accessToken()))
                 .isEqualTo("campanas:borrar,campanas:crear,campanas:editar,campanas:leer");
+    }
+
+    @Test
+    void al_renovar_sin_ningun_permiso_se_rechaza() {
+        // Complementa el test de la escalada: si a alguien le quitan TODOS los
+        // permisos (el grant queda vacío), la renovación debe rechazarse en
+        // vez de emitir un token sin autoridades. El JwtUtil de develop
+        // habría copiado los claims del token anterior y esto habría dado un
+        // refresh exitoso con los permisos viejos: que esto falle es la
+        // guarda contra reintroducir ese copiado.
+        var primero = servicio.authenticate("token-de-google");
+
+        usuarioEnBd = usuarioCon(Set.of());   // le quitan todos los permisos
+
+        assertThatThrownBy(() -> servicio.refresh(primero.refreshToken()))
+                .isInstanceOf(AuthenticationService.AccessDeniedException.class);
     }
 
     @Test
