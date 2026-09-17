@@ -1,0 +1,6 @@
+spring:
+  jpa:
+    hibernate.ddl-auto: none   # Flyway manda; Hibernate ni siquiera valida
+    open-in-view: false
+  flyway:
+    enabled: true

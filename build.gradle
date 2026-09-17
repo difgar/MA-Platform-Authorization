@@ -37,12 +37,29 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.flywaydb:flyway-core'
+    // Boot 4 modularizó la autoconfiguración: la de Flyway vive en este artefacto
+    // aparte, no llega transitivamente con flyway-core ni con el starter de JPA.
+    implementation 'org.springframework.boot:spring-boot-flyway'
+    runtimeOnly 'org.flywaydb:flyway-mysql'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    runtimeOnly 'org.postgresql:postgresql'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+
+    // Testcontainers 2.x (gestionado por el BOM de Spring Boot 4.1.1) renombró
+    // los módulos con el prefijo 'testcontainers-'; los artefactos antiguos
+    // 'junit-jupiter', 'mysql' y 'postgresql' no existen en esa versión.
+    integrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    integrationTestImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    integrationTestImplementation 'org.testcontainers:testcontainers-mysql'
+    integrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
 }
 
 tasks.named('test') {
