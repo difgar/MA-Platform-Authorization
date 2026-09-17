@@ -2,8 +2,10 @@ package com.mobileamericas.authorization.web.security;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -23,6 +25,32 @@ import java.util.List;
 @EnableMethodSecurity
 @EnableConfigurationProperties(CorsProperties.class)
 class SecurityConfig {
+
+    /**
+     * Descubierto al verificar las probes del Task 10 (docker run + curl),
+     * no algo documentado en el spec: aunque management corre en su propio
+     * puerto y en su propio contexto hijo, Spring Boot resuelve
+     * springSecurityFilterChain (visible por herencia desde el contexto
+     * padre) para las peticiones que llegan por ESE puerto también, así que
+     * sin esta cadena aparte, /actuator/health/{liveness,readiness} exige el
+     * mismo Bearer que el resto de la API. Eso deja las probes de
+     * kubernetes/deployment.yaml sin poder autenticarse nunca: el pod jamás
+     * pasaría readinessProbe/livenessProbe. @Order(0) para que
+     * FilterChainProxy la evalúe antes que filterChain() de más abajo.
+     *
+     * EndpointRequest.toAnyEndpoint() basta porque exposure.include está
+     * fijado a 'health,info' (ver application.yml): no hay nada sensible
+     * detrás de este permitAll.
+     */
+    @Bean
+    @Order(0)
+    SecurityFilterChain actuatorFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher(EndpointRequest.toAnyEndpoint())
+                .authorizeHttpRequests(a -> a.anyRequest().permitAll())
+                .csrf(csrf -> csrf.disable())
+                .build();
+    }
 
     @Bean
     SecurityFilterChain filterChain(

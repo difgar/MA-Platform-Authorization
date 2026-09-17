@@ -1,5 +1,17 @@
 steps:
-  - name: 'gradle:8.7-jdk17'
+  # 'gradle check' incluye 'integrationTest', que levanta contenedores con
+  # Testcontainers (MySQL y PostgreSQL). No hay forma de comprobar desde aquí
+  # si el *builder* de este proyecto en Cloud Build puede hacer Docker dentro
+  # de Docker, así que este paso corre solo 'test' (unidad) para no asumirlo.
+  # 'integrationTest' necesita wiring aparte: un trigger propio con un runner
+  # que sí tenga Docker disponible (o el patrón "Docker outside of Docker" con
+  # el socket montado, si ese es el caso de este proyecto de Cloud Build;
+  # compruébalo antes del primer despliegue en vez de suponerlo).
+  - name: 'gradle:jdk25'
+    entrypoint: 'gradle'
+    args: ['test']
+    id: Test
+  - name: 'gradle:jdk25'
     entrypoint: 'gradle'
     args: ['bootJar','-Denv=${_ENVIRONMENT}']
   - name: gcr.io/cloud-builders/docker
@@ -47,19 +59,6 @@ steps:
         fi
     id: Save configs
     entrypoint: sh
-  - name: google/cloud-sdk:alpine
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - |
-        apk add --no-cache gettext
-        echo "Applying deployment with TAG_NAME=${TAG_NAME}"
-        export ADMIN_CLIENT_ID=${_ADMIN_CLIENT_ID}
-        export FGF_CLIENT_ID=${_FGF_CLIENT_ID}
-        export AUTH_SECRET=${_AUTH_SECRET}
-        envsubst < output/expanded/aggregated-resources.yaml > output/expanded/deployment_substituted.yaml
-        rm output/expanded/aggregated-resources.yaml
-    id: Replace using envsubst
   - name: gcr.io/cloud-builders/gke-deploy
     args:
       - apply
@@ -83,7 +82,7 @@ substitutions:
   _K8S_LABELS: ''
   _K8S_ANNOTATIONS: ''
   _K8S_APP_NAME: ma-authorization-prod-deployment
-  _IMAGE_NAME: gcr.io/sms-ma-shaplatform/ma-authorization
+  _IMAGE_NAME: us-east1-docker.pkg.dev/sms-ma-platform/ma-platform/ma-authorization
   _DOCKERFILE_DIR: ''
 tags:
   - gcp-cloud-build-deploy

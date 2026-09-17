@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/ma_platform_auth
+    username: ma-platform-user
+    password: ma-platform-password
+
+authorization:
+  jwt:
+    # dev-keys/active.jwk se genera con RSAKeyGenerator (nimbus-jose-jwt) y se
+    # commitea SOLO porque es de desarrollo: no protege nada real, nunca sale
+    # de este perfil y no debe reutilizarse en ningún entorno desplegado. En
+    # todos los demás perfiles, JWT_KEY_LOCATIONS (ver application.yml) la
+    # sobrescribe con la ruta del Secret montado en el pod.
+    key-locations: classpath:dev-keys/active.jwk
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173

@@ -54,12 +54,11 @@ spec:
           env:
             - name: "JAVA_TOOL_OPTIONS"
               value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25"
-            - name: "ADMIN_CLIENT_ID"
-              value: "${ADMIN_CLIENT_ID}"
-            - name: "FGF_CLIENT_ID"
-              value: "${FGF_CLIENT_ID}"
-            - name: "AUTH_SECRET"
-              value: "${AUTH_SECRET}"
+            - name: "JWT_KEY_LOCATIONS"
+              value: "file:/etc/ma-auth/keys/active.jwk"
+            # ADMIN_CLIENT_ID, FGF_CLIENT_ID y AUTH_SECRET ya no existen: el
+            # mapeo cliente de Google -> app vive en auth_app.google_client_id
+            # (ver V2__datos_iniciales.sql), no en variables de entorno.
             - name: "env"
               valueFrom:
                 configMapKeyRef:
@@ -98,6 +97,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.labels['app']
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /etc/ma-auth/keys
+              readOnly: true
           startupProbe:
             httpGet:
               path: "/actuator/health/readiness"
@@ -112,6 +115,26 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          # No existía ninguna: Kubernetes no reiniciaba nunca un pod colgado.
+          # startupProbe ya cubre el arranque lento (migraciones de Flyway), así
+          # que esta no necesita un initialDelaySeconds generoso propio.
+          livenessProbe:
+            httpGet:
+              path: "/actuator/health/liveness"
+              port: "management"
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: jwt-keys
+          secret:
+            # Patrón de la plataforma (igual que MA-MtSender): Secret de
+            # Kubernetes montado como volumen, sembrado desde Secret Manager en
+            # Cloud Build. NO el CSI driver de Secret Manager: nadie más en
+            # esta plataforma lo usa. Paso manual fuera de este repo: generar
+            # el par de claves y `kubectl create secret generic
+            # ma-auth-jwt-keys --from-file=active.jwk=./active.jwk`.
+            secretName: ma-auth-jwt-keys
 ---
 apiVersion: "autoscaling/v2"
 kind: "HorizontalPodAutoscaler"

@@ -1,0 +1,64 @@
+server:
+  # El Service de MA-Platform-config apunta a 8081 y el ConfigMap define
+  # SERVER_PORT: "8081". El fichero anterior fijaba 18080 literal, así que
+  # nada podía llegar al pod. Esta línea es el arreglo.
+  port: ${SERVER_PORT:8081}
+  servlet:
+    context-path: /authorization-api
+  shutdown: graceful
+
+spring:
+  application.name: MA-Platform-Authorization
+  threads.virtual.enabled: true      # servicio de pura E/S: Google, JWKS, BD
+  datasource:
+    url: ${DB_MA_PLATFORM_URL}
+    username: ${DB_MA_PLATFORM_USER}
+    password: ${DB_MA_PLATFORM_PASSWORD}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      pool-name: AuthHikariCP
+  jpa:
+    hibernate.ddl-auto: validate     # Flyway manda; Hibernate sólo comprueba
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration   # UN solo juego para MySQL y PostgreSQL
+
+management:
+  server.port: ${MANAGEMENT_SERVER_PORT:18081}
+  endpoint.health:
+    probes.enabled: true
+    show-details: never              # 'always' filtraba detalles de la BD
+  endpoints:
+    web:
+      # Fijado explícitamente, no dejado al valor por defecto de Boot (solo
+      # 'health'): un cambio de esa política en una futura versión dejaría
+      # /actuator/env, /actuator/beans, etc. expuestos sin querer. Además,
+      # SecurityConfig.actuatorFilterChain() permite sin autenticar TODO lo que
+      # esté expuesto aquí (management corre en su propio puerto, pero en un
+      # contexto hijo que SÍ hereda el SecurityFilterChain del padre si no se
+      # excluye explícitamente): por eso este 'include' es también, de hecho,
+      # la lista de lo que queda sin autenticación.
+      exposure.include: health,info
+      base-path: /actuator
+
+authorization:
+  jwt:
+    issuer: ${JWT_ISSUER:https://auth.mobile-americas.com}
+    access-ttl: PT15M
+    refresh-ttl: PT12H
+    # La primera es la activa. Durante una rotación se declaran dos.
+    key-locations: ${JWT_KEY_LOCATIONS:file:/etc/ma-auth/keys/active.jwk}
+  google:
+    # GoogleProperties se autocompleta con estos mismos valores si se omiten
+    # (ver GoogleProperties.java); se fijan aquí solo para que la configuración
+    # real del servicio sea visible sin tener que leer el código.
+    jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+    accepted-issuers:
+      - https://accounts.google.com
+      - accounts.google.com
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://*.mobile-americas.com}
+
+logging.level.com.mobileamericas: INFO

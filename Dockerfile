@@ -1,20 +1,18 @@
-FROM azul/zulu-openjdk:17-jre-headless
-ARG PROJECT_NAME=ma-authorization
-ARG SERVER_PORT=8081
-ARG MANAGEMENT_SERVER_PORT=18081
+FROM eclipse-temurin:25-jre-alpine
 
-ENV APP_HOME /usr/app
-ENV APP_JAR ${PROJECT_NAME}.jar
-ENV DB_MA_PLATFORM_URL jdbc:mysql://172.18.0.3:3306/ma-platform
-ENV DB_MA_PLATFORM_USER ma-platform-user
-ENV DB_MA_PLATFORM_PASSWORD ma-platform-password
-ENV SERVER_PORT ${SERVER_PORT}
-ENV MANAGEMENT_SERVER_PORT ${MANAGEMENT_SERVER_PORT}
+ARG PROJECT_NAME=ma-authorization
+ENV APP_HOME=/usr/app
+
 WORKDIR $APP_HOME
-EXPOSE ${SERVER_PORT}
-EXPOSE ${MANAGEMENT_SERVER_PORT}
-ADD ./build/libs/${PROJECT_NAME}*.jar ./${APP_JAR}
-# Se conserva una shell para expandir $APP_HOME y $APP_JAR, pero con exec: asi la
-# JVM es PID 1, recibe SIGTERM y el terminationGracePeriodSeconds del pod sirve
-# de algo. El entrypoint.sh anterior la lanzaba como hijo de bash sin exec.
-ENTRYPOINT ["/bin/sh", "-c", "exec java -jar $APP_HOME/$APP_JAR"]
+COPY ./build/libs/${PROJECT_NAME}*.jar ./ma-authorization.jar
+
+# Sin root: la imagen anterior ejecutaba como root con un JDK completo.
+RUN addgroup -S app && adduser -S -G app app && chown -R app:app $APP_HOME
+USER app
+
+EXPOSE 8081 18081
+
+# Forma exec, sin envoltorio de bash. El Dockerfile anterior generaba un script
+# entrypoint.sh, así que SIGTERM llegaba a bash y no a la JVM: el
+# terminationGracePeriodSeconds del deployment no servía de nada.
+ENTRYPOINT ["java", "-jar", "/usr/app/ma-authorization.jar"]
