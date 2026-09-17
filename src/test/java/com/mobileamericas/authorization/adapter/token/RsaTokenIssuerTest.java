@@ -95,9 +95,16 @@ class RsaTokenIssuerTest {
 
     @Test
     void un_resource_server_de_otra_app_rechaza_el_token() {
-        // El aislamiento entre aplicaciones (§8 del spec). Un token emitido para
-        // 'trafficflow' no debe valer contra un servicio configurado para 'admin',
-        // y eso lo hace el propio resource server, sin código nuestro.
+        // El aislamiento entre aplicaciones (§8 del spec): un token emitido para
+        // 'trafficflow' no debe valer contra un servicio configurado para 'admin'.
+        //
+        // OJO: esto no pasa solo con 'jwk-set-uri'. En Boot 4.1.1,
+        // JwtDecoderConfiguration añade el validador de 'aud' únicamente si el
+        // consumidor configura también
+        // spring.security.oauth2.resourceserver.jwt.audiences=<nombre-app>; sin
+        // esa propiedad, JwtValidators.createDefault() no comprueba 'aud' en
+        // absoluto (solo exp/nbf y el issuer si está configurado). Aquí se monta
+        // ese validador a mano para probar que, una vez configurado, sí aísla.
         var token = emisor.issueAccessToken(grant());
 
         var comoTrafficflow = NimbusJwtDecoder.withPublicKey(clavePublica).build();

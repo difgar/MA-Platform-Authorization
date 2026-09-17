@@ -34,8 +34,10 @@ public class RsaTokenIssuer implements TokenIssuer {
                 .issuer(props.issuer())
                 // El UUID, no el email: el email puede cambiar y 'sub' debe ser estable.
                 .subject(grant.user().id().toString())
-                // La app. Un token de 'admin' no vale contra 'trafficflow': lo
-                // rechaza el propio resource server, sin código nuestro.
+                // La app. Aísla 'admin' de 'trafficflow' solo si el consumidor
+                // configura spring.security.oauth2.resourceserver.jwt.audiences
+                // con su propio nombre; con solo 'jwk-set-uri', Boot no valida
+                // 'aud' (ver RsaTokenIssuerTest.un_resource_server_de_otra_app_rechaza_el_token).
                 .audience(List.of(grant.app().name()))
                 .issuedAt(ahora)
                 .expiresAt(ahora.plus(props.accessTtl()))
