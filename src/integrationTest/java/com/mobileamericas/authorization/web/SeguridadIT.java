@@ -4,7 +4,6 @@ import com.mobileamericas.authorization.application.port.AppRepository;
 import com.mobileamericas.authorization.application.port.TokenIssuer;
 import com.mobileamericas.authorization.application.port.UserRepository;
 import com.mobileamericas.authorization.domain.AccessGrant;
-import com.mobileamericas.authorization.domain.User;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -84,21 +83,19 @@ public abstract class SeguridadIT {
      * rechazar en silencio un token legítimo y las otras pruebas no lo
      * notarían, porque todas esperan un rechazo.
      *
-     * El full_name de los dos usuarios sembrados en V2 es NULL a propósito
-     * (para no meter datos personales en git; ver el comentario de esa
-     * migración), pero RsaTokenIssuer.issueAccessToken() no admite un 'name'
-     * nulo: JwtClaimsSet.Builder.claim() exige valor no nulo y lanza
-     * IllegalArgumentException. Esto es un defecto real de la tarea 5, fuera
-     * del alcance de esta (adapter/token, no web/); se sustituye aquí el
-     * nombre por uno no nulo, conservando el resto del usuario sembrado
-     * (roles y permisos reales), solo para poder emitir el token de prueba.
+     * Usa al usuario sembrado tal cual, SIN sustituir nada: su full_name es
+     * NULL en V2 (a propósito, para no meter datos personales en git), que es
+     * exactamente el caso real de todo usuario hoy en la base de datos. Antes
+     * de la corrección de RsaTokenIssuer, emitir este token lanzaba
+     * IllegalArgumentException y el login real fallaba para cualquier
+     * usuario; esta es la prueba que lo habría detectado.
      */
     @Test
-    void un_token_propio_valido_autentica_en_me() {
+    void un_usuario_con_full_name_nulo_autentica_en_me_sin_fallar() {
         var app = apps.findByName("admin").orElseThrow();
-        var sembrado = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();
-        var usuario = new User(sembrado.id(), sembrado.email(), "Usuario Uno",
-                sembrado.active(), sembrado.roles());
+        var usuario = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();
+        assertThat(usuario.fullName()).as("precondición: así están sembrados los usuarios hoy").isNull();
+
         var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
         var token = emisor.issueAccessToken(grant);
 
@@ -110,6 +107,9 @@ public abstract class SeguridadIT {
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(r.getBody())
                 .contains("usuario1@pendiente.local")
-                .contains("\"app\":\"admin\"");
+                .contains("\"app\":\"admin\"")
+                // Ausente, no fabricado: ni el claim 'name' del token ni el
+                // campo "name" de la respuesta deben inventar un valor.
+                .contains("\"name\":null");
     }
 }

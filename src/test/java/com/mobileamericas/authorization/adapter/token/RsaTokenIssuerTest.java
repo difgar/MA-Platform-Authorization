@@ -48,11 +48,15 @@ class RsaTokenIssuerTest {
     }
 
     private AccessGrant grant() {
+        return grant("Persona");
+    }
+
+    private AccessGrant grant(String fullName) {
         var rol = new Role(UUID.randomUUID(), "operador", APP_ID,
                 Set.of(Permission.parse("campanas:leer"), Permission.parse("campanas:editar")));
         var usuario = new User(
                 UUID.fromString("d0000000-0000-4000-8000-000000000001"),
-                "persona@ejemplo.com", "Persona", true, Set.of(rol));
+                "persona@ejemplo.com", fullName, true, Set.of(rol));
         var app = new App(APP_ID, "trafficflow", "cliente-123", null, true);
         return AccessGrant.of(usuario, app, Set.of("campanas"));
     }
@@ -129,6 +133,21 @@ class RsaTokenIssuerTest {
         assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt()))
                 .isEqualTo(Duration.ofMinutes(15));
         assertThat(jwt.getId()).isNotBlank();
+    }
+
+    /**
+     * full_name es NULLABLE en el esquema (V1__esquema.sql), y ambos usuarios
+     * sembrados en V2 lo tienen NULL hoy. Antes de esta prueba,
+     * issueAccessToken() llamaba a JwtClaimsSet.Builder.claim("name", null),
+     * que lanza IllegalArgumentException: emitir un token para cualquier
+     * usuario sembrado fallaba con un 500, no solo faltaba el nombre.
+     */
+    @Test
+    void un_usuario_sin_nombre_emite_un_token_sin_el_claim_name() {
+        var jwt = decodificador.decode(emisor.issueAccessToken(grant(null)));
+
+        assertThat(jwt.hasClaim("name")).as("el claim debe estar ausente, no nulo ni vacío").isFalse();
+        assertThat(jwt.getClaimAsString("email")).isEqualTo("persona@ejemplo.com");
     }
 
     @Test

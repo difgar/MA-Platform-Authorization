@@ -16,10 +16,14 @@ class MeController {
      * Todo sale del token ya validado: no hace falta tocar la base de datos.
      *
      * Un {@code Map.of(...)} revienta con {@link NullPointerException} en cuanto
-     * uno de sus valores es null, y aquí 'name' puede serlo (User.fullName() no
-     * es obligatorio en el dominio). Un record no tiene ese problema: cada
-     * claim que pueda faltar se cubre explícitamente antes de construirlo, así
-     * que una claim ausente no puede convertirse en un 500 en este endpoint.
+     * uno de sus valores es null, y aquí 'name' puede faltar de verdad: full_name
+     * es NULLABLE en el esquema, y RsaTokenIssuer omite el claim 'name' cuando no
+     * hay nombre en vez de mandarlo nulo o vacío (ver su comentario). Un record
+     * no tiene el problema de Map.of: 'name' pasa tal cual, null incluido, sin
+     * fabricar un "" que le haría creer a quien llama que el nombre se conoce y
+     * está vacío. Los demás claims opcionales (roles, permissions, app) sí se
+     * cubren con un valor por defecto porque su ausencia no es un dato honesto
+     * que valga la pena preservar aquí.
      */
     @GetMapping("/me")
     MeResponse me(@AuthenticationPrincipal Jwt jwt) {
@@ -30,7 +34,7 @@ class MeController {
         return new MeResponse(
                 jwt.getSubject(),
                 jwt.getClaimAsString("email"),
-                jwt.getClaimAsString("name") == null ? "" : jwt.getClaimAsString("name"),
+                jwt.getClaimAsString("name"),
                 (audiencia == null || audiencia.isEmpty()) ? null : audiencia.getFirst(),
                 roles == null ? List.of() : roles,
                 permisos == null ? List.of() : permisos);

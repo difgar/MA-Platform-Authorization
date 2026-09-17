@@ -30,7 +30,7 @@ public class RsaTokenIssuer implements TokenIssuer {
     public String issueAccessToken(AccessGrant grant) {
         var ahora = Instant.now();
 
-        var claims = JwtClaimsSet.builder()
+        var builder = JwtClaimsSet.builder()
                 .issuer(props.issuer())
                 // El UUID, no el email: el email puede cambiar y 'sub' debe ser estable.
                 .subject(grant.user().id().toString())
@@ -43,11 +43,20 @@ public class RsaTokenIssuer implements TokenIssuer {
                 .expiresAt(ahora.plus(props.accessTtl()))
                 .id(UUID.randomUUID().toString())
                 .claim("email", grant.user().email())
-                .claim("name", grant.user().fullName())
                 .claim("roles", List.copyOf(grant.roleNames()))
                 // Autoridades concretas: los comodines ya se expandieron en el dominio.
-                .claim("permissions", List.copyOf(grant.authorities()))
-                .build();
+                .claim("permissions", List.copyOf(grant.authorities()));
+
+        // full_name es NULLABLE en el esquema (V1__esquema.sql): el emisor tiene
+        // que tolerar que no haya nombre. JwtClaimsSet.Builder.claim() exige un
+        // valor no nulo, así que el claim se omite en vez de mandar null o "":
+        // una claim ausente es honesta, mientras que una cadena vacía induciría
+        // a un consumidor a creer que el nombre se conoce y está vacío.
+        if (grant.user().fullName() != null) {
+            builder.claim("name", grant.user().fullName());
+        }
+
+        var claims = builder.build();
 
         var header = JwsHeader.with(SignatureAlgorithm.RS256)
                 .keyId(keys.activeKeyId())
