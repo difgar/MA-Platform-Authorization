@@ -28,10 +28,23 @@ public final class JwtKeys {
         if (keys.isEmpty()) {
             throw new IllegalArgumentException("Hace falta al menos una clave de firma.");
         }
-        // Un kid repetido hace ambigua la selección: ¿con cuál se firmó, o
-        // contra cuál debería verificar un consumidor que lee el JWKS?
+        // Invariantes por clave, exigidas aquí y no en parse(): así valen igual
+        // para una clave leída de key-locations que para una construida a mano
+        // con forTesting(), en vez de depender de por dónde entró.
         var vistos = new HashSet<String>();
         for (var key : keys) {
+            if (!key.isPrivate()) {
+                throw new IllegalArgumentException("La clave " + key.getKeyID() + " no tiene parte privada.");
+            }
+            // El 'kid' es opcional en una JWK, pero aquí no: sin él no hay forma
+            // de firmar con una clave concreta de la lista ni de que un
+            // consumidor seleccione la correcta al verificar contra el JWKS.
+            if (key.getKeyID() == null || key.getKeyID().isBlank()) {
+                throw new IllegalArgumentException(
+                        "La clave de firma necesita un 'kid'; sin él no se puede seleccionar para firmar ni verificar.");
+            }
+            // Un kid repetido hace ambigua la selección: ¿con cuál se firmó, o
+            // contra cuál debería verificar un consumidor que lee el JWKS?
             if (!vistos.add(key.getKeyID())) {
                 throw new IllegalArgumentException(
                         "Hay más de una clave con el kid '" + key.getKeyID() + "'; la selección sería ambigua.");
@@ -49,20 +62,10 @@ public final class JwtKeys {
         return new JwtKeys(List.of(claves));
     }
 
+    /** Solo convierte JSON en RSAKey; las invariantes viven en el constructor. */
     private static RSAKey parse(String json) {
         try {
-            var key = RSAKey.parse(json);
-            if (!key.isPrivate()) {
-                throw new IllegalArgumentException("La clave " + key.getKeyID() + " no tiene parte privada.");
-            }
-            // El 'kid' es opcional en una JWK, pero aquí no: sin él no hay forma
-            // de firmar con una clave concreta de la lista ni de que un
-            // consumidor seleccione la correcta al verificar contra el JWKS.
-            if (key.getKeyID() == null || key.getKeyID().isBlank()) {
-                throw new IllegalArgumentException(
-                        "La clave de firma necesita un 'kid'; sin él no se puede seleccionar para firmar ni verificar.");
-            }
-            return key;
+            return RSAKey.parse(json);
         } catch (ParseException e) {
             throw new IllegalArgumentException("Clave de firma ilegible.", e);
         }
