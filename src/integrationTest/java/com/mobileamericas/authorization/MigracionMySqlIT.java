@@ -8,7 +8,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
 @Testcontainers
-class MigracionMySqlIT extends BaseIT {
+class MigracionMySqlIT extends MigracionIT {
 
     @Container
     @ServiceConnection
