@@ -33,13 +33,14 @@ management:
   endpoints:
     web:
       # Fijado explícitamente, no dejado al valor por defecto de Boot (solo
-      # 'health'): un cambio de esa política en una futura versión dejaría
-      # /actuator/env, /actuator/beans, etc. expuestos sin querer. Además,
-      # SecurityConfig.actuatorFilterChain() permite sin autenticar TODO lo que
-      # esté expuesto aquí (management corre en su propio puerto, pero en un
-      # contexto hijo que SÍ hereda el SecurityFilterChain del padre si no se
-      # excluye explícitamente): por eso este 'include' es también, de hecho,
-      # la lista de lo que queda sin autenticación.
+      # 'health'): sigue siendo buena práctica no exponer más superficie de
+      # management de la necesaria. Pero, a diferencia de una versión anterior
+      # de este comentario, esto YA NO es lo único que evita que /actuator/env
+      # quede público: SecurityConfig.actuatorFilterChain() solo permite sin
+      # autenticar HealthEndpoint e InfoEndpoint por nombre (no "lo que sea que
+      # esté expuesto aquí"), así que añadir 'env' a esta lista para depurar un
+      # incidente no lo hace público — sigue cayendo en el
+      # anyRequest().authenticated() de filterChain(). Ver ActuatorSecurityIT.
       exposure.include: health,info
       base-path: /actuator
 

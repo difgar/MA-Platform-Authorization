@@ -1,7 +1,9 @@
 package com.mobileamericas.authorization.web.security;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.actuate.info.InfoEndpoint;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,15 +40,25 @@ class SecurityConfig {
      * pasaría readinessProbe/livenessProbe. @Order(0) para que
      * FilterChainProxy la evalúe antes que filterChain() de más abajo.
      *
-     * EndpointRequest.toAnyEndpoint() basta porque exposure.include está
-     * fijado a 'health,info' (ver application.yml): no hay nada sensible
-     * detrás de este permitAll.
+     * EndpointRequest.to(HealthEndpoint.class, InfoEndpoint.class), NO
+     * EndpointRequest.toAnyEndpoint(): la primera versión de esta cadena
+     * abría lo que fuera que management.endpoints.web.exposure.include
+     * dijera en cada momento, así que la única barrera real entre
+     * /actuator/env (o /actuator/beans, /actuator/threaddump...) y quien sea
+     * que tenga acceso de red al puerto de management era esa lista en
+     * application.yml — un guardia cuya protección vive en otro fichero es
+     * peor que ningún guardia, porque quien lee este método deja de pensar en
+     * ello. Con el matcher fijado a los dos endpoints concretos, añadir 'env'
+     * a exposure.include para depurar un incidente NO lo hace público: cae en
+     * el anyRequest().authenticated() de filterChain() y sigue exigiendo
+     * Bearer. Ver ActuatorSecurityIT, que reproduce justo ese escenario
+     * (expone 'env' a propósito y comprueba que sigue devolviendo 401).
      */
     @Bean
     @Order(0)
     SecurityFilterChain actuatorFilterChain(HttpSecurity http) throws Exception {
         return http
-                .securityMatcher(EndpointRequest.toAnyEndpoint())
+                .securityMatcher(EndpointRequest.to(HealthEndpoint.class, InfoEndpoint.class))
                 .authorizeHttpRequests(a -> a.anyRequest().permitAll())
                 .csrf(csrf -> csrf.disable())
                 .build();
