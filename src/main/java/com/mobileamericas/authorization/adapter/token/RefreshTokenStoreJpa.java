@@ -38,13 +38,14 @@ class RefreshTokenStoreJpa implements RefreshTokenStore {
     public IssuedRefreshToken rotate(UUID familyId) {
         // El sujeto se toma de la familia, no de ningún token que llegue de fuera.
         var anterior = jpa.findFirstByFamilyIdOrderByCreatedAtDesc(familyId.toString())
-                .orElseThrow(() -> new IllegalStateException("Familia desconocida: " + familyId));
+                .orElseThrow(() -> new UnknownFamilyException(familyId));
 
         // La revocación es definitiva para la familia: ni la detección de
         // reutilización ni un logout deben poder resucitarla con un token
-        // nuevo y sin revocar.
+        // nuevo y sin revocar. Resultado rutinario, no un error interno como
+        // el de arriba, por eso lleva un tipo de excepción distinto.
         if (anterior.revokedAt != null) {
-            throw new IllegalStateException("Familia revocada: " + familyId);
+            throw new RevokedFamilyException(familyId);
         }
 
         return crear(UUID.fromString(anterior.userId), UUID.fromString(anterior.appId), familyId);
@@ -92,9 +93,10 @@ class RefreshTokenStoreJpa implements RefreshTokenStore {
         }
 
         // La transición de estado es el árbitro, no la lectura de arriba: si
-        // otra llamada concurrente ganó la carrera entre esa lectura y este
-        // UPDATE, marcarUsado() afecta cero filas. Perder la carrera es
-        // indistinguible de la reutilización y se trata igual.
+        // otra llamada concurrente ya marcó el token como usado, o ya revocó
+        // la familia, entre esa lectura y este UPDATE, marcarUsado() afecta
+        // cero filas. Ambos casos son indistinguibles de la reutilización y
+        // se tratan igual (revocar es idempotente si la familia ya lo estaba).
         if (jpa.marcarUsado(t.id, ahora) == 0) {
             jpa.revokeFamily(t.familyId, ahora);
             return Optional.empty();

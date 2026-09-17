@@ -18,11 +18,22 @@ interface JpaRefreshTokenRepository extends JpaRepository<RefreshTokenEntity, St
     /**
      * Transición de estado condicionada, no una lectura previa: si el UPDATE
      * afecta cero filas, es que otra llamada concurrente ya marcó el token
-     * como usado entre nuestra lectura y este UPDATE. Perder esa carrera es
-     * indistinguible de la reutilización y {@code consume()} lo trata igual.
+     * como usado, o ya revocó la familia, entre nuestra lectura y este
+     * UPDATE. Ambos casos son indistinguibles de la reutilización y
+     * {@code consume()} los trata igual: revoca la familia entera (idempotente
+     * si ya lo estaba, gracias al {@code AND revokedAt IS NULL} de
+     * {@code revokeFamily}).
+     *
+     * A propósito NO lleva una condición de expiración: si el token expiró,
+     * el UPDATE debe fallar por eso, pero fallar por expiración no debe
+     * revocar la familia entera; el pre-chequeo de expiración en
+     * {@code consume()} ya distingue ese caso antes de llegar aquí.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE RefreshTokenEntity t SET t.usedAt = :ahora WHERE t.id = :id AND t.usedAt IS NULL")
+    @Query("""
+            UPDATE RefreshTokenEntity t SET t.usedAt = :ahora
+             WHERE t.id = :id AND t.usedAt IS NULL AND t.revokedAt IS NULL
+            """)
     int marcarUsado(@Param("id") String id, @Param("ahora") Instant ahora);
 
     // flushAutomatically: RefreshTokenEntity usa un @Id asignado, no generado,

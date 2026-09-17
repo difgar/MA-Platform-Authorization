@@ -131,8 +131,15 @@ public abstract class RefreshTokenStoreIT extends BaseIT {
         store.revokeFamily(emitido.familyId());
 
         assertThatThrownBy(() -> store.rotate(emitido.familyId()))
-                .as("la revocación es definitiva para la familia")
-                .isInstanceOf(IllegalStateException.class);
+                .as("la revocación es definitiva para la familia; resultado rutinario, no un bug")
+                .isInstanceOf(RefreshTokenStore.RevokedFamilyException.class);
+    }
+
+    @Test
+    void la_rotacion_de_una_familia_desconocida_es_un_error_distinto_de_la_revocacion() {
+        assertThatThrownBy(() -> store.rotate(UUID.randomUUID()))
+                .as("una familia que nunca existió es un error interno, no un resultado rutinario")
+                .isInstanceOf(RefreshTokenStore.UnknownFamilyException.class);
     }
 
     @Test
