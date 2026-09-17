@@ -13,9 +13,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Duration;
 import java.time.Instant;
 
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.http.HttpHeaders.SET_COOKIE;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -54,7 +58,17 @@ class AuthControllerTest {
                 .andExpect(cookie().httpOnly("ma_access", true))
                 .andExpect(cookie().secure("ma_access", true))
                 .andExpect(cookie().exists("ma_refresh"))
-                .andExpect(cookie().httpOnly("ma_refresh", true));
+                .andExpect(cookie().httpOnly("ma_refresh", true))
+                // MockMvc no tiene un matcher de sameSite; sin esto, borrar
+                // .sameSite("Lax") de CookieFactory dejaría la suite entera en
+                // verde. Se comprueba la cabecera Set-Cookie cruda, cookie por
+                // cookie: hasItem exige que exista UNA línea que combine el
+                // nombre con el atributo, no solo que "alguna" de las dos lo
+                // tenga.
+                .andExpect(header().stringValues(SET_COOKIE,
+                        hasItem(allOf(containsString("ma_access="), containsString("SameSite=Lax")))))
+                .andExpect(header().stringValues(SET_COOKIE,
+                        hasItem(allOf(containsString("ma_refresh="), containsString("SameSite=Lax")))));
     }
 
     @Test
@@ -79,6 +93,40 @@ class AuthControllerTest {
                         new jakarta.servlet.http.Cookie("ma_refresh", "el-refresh-token")))
                 .andExpect(status().isNoContent())
                 .andExpect(cookie().maxAge("ma_access", 0))
-                .andExpect(cookie().maxAge("ma_refresh", 0));
+                .andExpect(cookie().maxAge("ma_refresh", 0))
+                // Las cookies de borrado son las mismas que las de emisión (mismo
+                // base() en CookieFactory), pero eso es exactamente lo que hay que
+                // comprobar, no darlo por hecho.
+                .andExpect(header().stringValues(SET_COOKIE,
+                        hasItem(allOf(containsString("ma_access="), containsString("SameSite=Lax")))))
+                .andExpect(header().stringValues(SET_COOKIE,
+                        hasItem(allOf(containsString("ma_refresh="), containsString("SameSite=Lax")))));
+    }
+
+    @Test
+    void el_refresh_devuelve_cookies_nuevas() throws Exception {
+        given(servicio.refresh("el-refresh-token")).willReturn(new AuthenticationResult(
+                "nuevo-access-token", "nuevo-refresh-token",
+                Duration.ofMinutes(15), Instant.now().plus(Duration.ofHours(12))));
+
+        mvc.perform(post("/v1/auth/refresh").cookie(
+                        new jakarta.servlet.http.Cookie("ma_refresh", "el-refresh-token")))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().exists("ma_access"))
+                .andExpect(cookie().exists("ma_refresh"));
+    }
+
+    /**
+     * Sin el ResponseEntityExceptionHandler de ApiExceptionHandler, esto daba
+     * 500: @ExceptionHandler(Exception.class) atrapaba el
+     * MissingRequestCookieException de Spring MVC antes de que
+     * ResponseEntityExceptionHandler pudiera traducirlo a su 400 real. Como
+     * /v1/auth/refresh es permitAll, cualquier llamador anónimo podía forzar
+     * esa traza ERROR en el log con solo omitir la cookie.
+     */
+    @Test
+    void el_refresh_sin_cookie_responde_400_no_500() throws Exception {
+        mvc.perform(post("/v1/auth/refresh"))
+                .andExpect(status().isBadRequest());
     }
 }

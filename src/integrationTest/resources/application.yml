@@ -15,12 +15,12 @@ authorization:
     key-locations:
       - classpath:test-keys/active.jwk
   cors:
-    # SecurityConfig la lee con @Value en un List<String>: eso solo resuelve
-    # si la propiedad es un escalar (una cadena separada por comas), NO una
-    # secuencia YAML con guiones. Una secuencia YAML se aplana en claves
-    # indexadas (allowed-origins[0], [1]...) y no existe ningún valor en la
-    # clave "authorization.cors.allowed-origins" sin índice, así que
-    # ${authorization.cors.allowed-origins} no resuelve y el contexto no
-    # arranca (PlaceholderResolutionException). El formato escalar es además
-    # el que encaja con una variable de entorno de Kubernetes.
-    allowed-origins: https://localhost
+    # CorsProperties la lee vía @ConfigurationProperties (como JwtProperties.
+    # key-locations, cuatro líneas más arriba), que admite tanto esta secuencia
+    # YAML como una variable de entorno separada por comas en Kubernetes. Dos
+    # orígenes a propósito, no uno: con un solo valor ninguna prueba distingue
+    # "la lista se separó bien" de "no se separó y quedó un único patrón
+    # inválido", que es justo el fallo silencioso que preocupaba en producción.
+    allowed-origins:
+      - https://localhost
+      - https://admin.mobile-americas.com

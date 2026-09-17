@@ -13,10 +13,12 @@ import java.time.Duration;
  * Cualquier XSS podía leerlo.
  */
 @Component
-class CookieFactory {
+public class CookieFactory {
 
-    static final String ACCESS = "ma_access";
-    static final String REFRESH = "ma_refresh";
+    // Públicas: web.security.CookieBearerTokenResolver, en otro paquete, tiene
+    // que saber el nombre de la cookie de acceso para poder leerla.
+    public static final String ACCESS = "ma_access";
+    public static final String REFRESH = "ma_refresh";
 
     ResponseCookie access(String valor, Duration ttl) {
         return base(ACCESS, valor).maxAge(ttl).build();

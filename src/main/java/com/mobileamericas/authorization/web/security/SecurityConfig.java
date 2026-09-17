@@ -1,7 +1,7 @@
 package com.mobileamericas.authorization.web.security;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -21,6 +21,7 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@EnableConfigurationProperties(CorsProperties.class)
 class SecurityConfig {
 
     @Bean
@@ -34,8 +35,17 @@ class SecurityConfig {
             throws Exception {
         return http
                 .cors(c -> c.configurationSource(cors))
-                // Sin CSRF porque no hay sesión de servidor y el token va en una
-                // cookie SameSite=Lax; ninguna escritura es un GET.
+                // Sin CSRF porque no hay sesión de servidor y ninguna escritura es
+                // un GET. El access token se acepta tanto por cabecera Authorization
+                // (servicio a servicio) como por la cookie ma_access
+                // (CookieBearerTokenResolver, para el navegador). Aceptar la cookie
+                // reabre en principio la superficie CSRF que motivó esta decisión;
+                // lo que la cierra de verdad es SameSite=Lax en esa cookie
+                // (CookieFactory): un POST cross-site no la envía, así que un
+                // formulario ajeno no puede autenticarse con ella. SameSite=Lax deja
+                // de ser un detalle cosmético en el momento en que la cookie se
+                // acepta como credencial: es el control que sostiene toda esta
+                // decisión.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
@@ -45,8 +55,9 @@ class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // Denegar por defecto. Antes: .anyRequest().permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(o -> o.jwt(j -> j
-                        .jwtAuthenticationConverter(conversor())))
+                .oauth2ResourceServer(o -> o
+                        .bearerTokenResolver(new CookieBearerTokenResolver())
+                        .jwt(j -> j.jwtAuthenticationConverter(conversor())))
                 .build();
     }
 
@@ -73,20 +84,29 @@ class SecurityConfig {
     }
 
     /**
-     * authorization.cors.allowed-origins debe ser un escalar separado por comas
-     * (p.ej. "https://a,https://b"), no una secuencia YAML con guiones: una
-     * secuencia se aplana en claves indexadas (allowed-origins[0], [1]...) y
-     * ${authorization.cors.allowed-origins}, sin índice, no resolvería.
-     * El conversor de Spring convierte ese escalar a List<String> por la coma.
-     * De paso encaja con cómo se pasa en Kubernetes, como una única variable
-     * de entorno.
+     * Las patrones (no una lista de orígenes exactos) porque el spec quiere
+     * admitir formas como https://*.mobile-americas.com.
+     *
+     * OJO con lo que de verdad protege esto: CorsConfiguration.validateAllowCredentials()
+     * (spring-web) solo revisa allowedOrigins; NUNCA mira allowedOriginPatterns,
+     * así que setAllowedOriginPatterns(List.of("*")) con allowCredentials(true)
+     * NO falla al arrancar aunque sea exactamente el mismo agujero que esa
+     * validación existe para evitar: reflejar el Origin de cualquier llamador
+     * con Access-Control-Allow-Credentials: true. Por eso el '*' se rechaza
+     * aquí a mano, explícitamente, en vez de confiar en que Spring lo haga.
      */
     @Bean
-    CorsConfigurationSource corsConfigurationSource(
-            @Value("${authorization.cors.allowed-origins}") List<String> origenes) {
+    CorsConfigurationSource corsConfigurationSource(CorsProperties props) {
+        var origenes = props.allowedOrigins();
+        if (origenes.contains("*")) {
+            throw new IllegalStateException(
+                    "authorization.cors.allowed-origins no admite '*': con "
+                            + "allowCredentials(true) reflejaría el Origin de cualquier "
+                            + "llamador. Usa un patrón concreto, p.ej. "
+                            + "https://*.mobile-americas.com.");
+        }
+
         var c = new CorsConfiguration();
-        // Lista explícita, nunca '*': con allowCredentials el comodín no es válido
-        // y además abriría el servicio a cualquier origen.
         c.setAllowedOriginPatterns(origenes);
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("Content-Type", "Accept", "Origin", "X-Requested-With"));

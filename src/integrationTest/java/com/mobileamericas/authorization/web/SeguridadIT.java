@@ -52,11 +52,25 @@ public abstract class SeguridadIT {
                 .doesNotContain("JWT_PRIVATE_KEY");
     }
 
+    /**
+     * OJO: no basta con pegarle a una ruta que no existe. Bajo el viejo
+     * .anyRequest().permitAll(), GET /v1/lo-que-sea también daba 404 —el
+     * despachador nunca encuentra un handler—, así que esa prueba pasaba
+     * igual con o sin la denegación por defecto y no demostraba nada.
+     *
+     * GET /v1/auth/logout SÍ está mapeado (el controlador lo declara), pero
+     * solo para POST, y la lista permitAll de SecurityConfig también dice
+     * POST. Con permitAll a secas, esta petición pasaría la seguridad y
+     * llegaría al despachador, que respondería 405 (método no soportado). Con
+     * denegación por defecto, .anyRequest().authenticated() la intercepta ANTES
+     * de que el despachador llegue a enterarse de que el método está mal: 401.
+     * Es la única combinación de esta clase que distingue de verdad un
+     * resultado del otro.
+     */
     @Test
-    void una_ruta_no_declarada_exige_autenticacion() {
-        // Antes: .anyRequest().permitAll()
-        assertThat(http.getForEntity("/v1/lo-que-sea", String.class).getStatusCode())
-                .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND);
+    void una_ruta_mapeada_pero_no_declarada_exige_autenticacion() {
+        assertThat(http.getForEntity("/v1/auth/logout", String.class).getStatusCode())
+                .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -92,15 +106,8 @@ public abstract class SeguridadIT {
      */
     @Test
     void un_usuario_con_full_name_nulo_autentica_en_me_sin_fallar() {
-        var app = apps.findByName("admin").orElseThrow();
-        var usuario = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();
-        assertThat(usuario.fullName()).as("precondición: así están sembrados los usuarios hoy").isNull();
-
-        var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
-        var token = emisor.issueAccessToken(grant);
-
         var headers = new HttpHeaders();
-        headers.setBearerAuth(token);
+        headers.setBearerAuth(tokenDelUsuarioSembrado());
 
         var r = http.exchange("/v1/auth/me", HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
@@ -111,5 +118,43 @@ public abstract class SeguridadIT {
                 // Ausente, no fabricado: ni el claim 'name' del token ni el
                 // campo "name" de la respuesta deben inventar un valor.
                 .contains("\"name\":null");
+    }
+
+    /**
+     * El único camino que un navegador puede tomar de verdad.
+     *
+     * SecurityConfig configura oauth2ResourceServer().jwt() sin
+     * bearerTokenResolver propio, así que por defecto Spring Security solo
+     * mira la cabecera Authorization: Bearer (DefaultBearerTokenResolver). El
+     * access token, sin embargo, viaja EXCLUSIVAMENTE en la cookie HttpOnly
+     * ma_access, con el cuerpo vacío a propósito para que JavaScript no pueda
+     * leerlo. Sin CookieBearerTokenResolver, un navegador podía iniciar sesión
+     * y no tenía ninguna forma de llegar después a /v1/auth/me: JavaScript no
+     * puede poner en una cabecera un valor que tiene prohibido leer.
+     *
+     * La otra prueba de esta clase que autentica con éxito
+     * (un_usuario_con_full_name_nulo_autentica_en_me_sin_fallar) usa
+     * headers.setBearerAuth(...), que es precisamente el camino que un
+     * navegador NO puede tomar; sin esta prueba, ese agujero quedaba tapado
+     * por su único camino de éxito.
+     */
+    @Test
+    void un_token_propio_en_la_cookie_ma_access_autentica_en_me() {
+        var headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, CookieFactory.ACCESS + "=" + tokenDelUsuarioSembrado());
+
+        var r = http.exchange("/v1/auth/me", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(r.getBody()).contains("usuario1@pendiente.local");
+    }
+
+    private String tokenDelUsuarioSembrado() {
+        var app = apps.findByName("admin").orElseThrow();
+        var usuario = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();
+        assertThat(usuario.fullName()).as("precondición: así están sembrados los usuarios hoy").isNull();
+
+        var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
+        return emisor.issueAccessToken(grant);
     }
 }
