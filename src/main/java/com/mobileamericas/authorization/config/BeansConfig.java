@@ -13,6 +13,7 @@ import com.mobileamericas.authorization.application.service.AuthenticationServic
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
@@ -25,8 +26,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Cableado de beans de la aplicación. El decodificador propio (tarea 9) se
- * añade más adelante a esta misma clase.
+ * Cableado de beans de la aplicación.
  */
 @Configuration
 @EnableConfigurationProperties({JwtProperties.class, GoogleProperties.class})
@@ -68,6 +68,27 @@ public class BeansConfig {
                 JwtValidators.createDefault(),
                 new JwtClaimValidator<String>("iss",
                         iss -> iss != null && props.acceptedIssuers().contains(iss))));
+        return decoder;
+    }
+
+    /**
+     * Decodificador de NUESTROS tokens, para /v1/auth/me.
+     *
+     * @Primary porque es el que usa la cadena de seguridad; el de Google se
+     * inyecta por nombre en GoogleIdentityVerifier, así que no hay ambigüedad
+     * en ese punto pese a que ahora coexisten dos beans de JwtDecoder.
+     *
+     * Usa la clave ACTIVA únicamente. Durante una rotación, un token firmado
+     * con la clave anterior no valida aquí hasta que su portador renueve, lo
+     * que ocurre como mucho 15 minutos después (la duración del access token).
+     * Los consumidores externos no tienen ese límite: leen el JWKS completo
+     * (JwksController), que sí publica todas las claves vigentes.
+     */
+    @Bean
+    @Primary
+    JwtDecoder selfJwtDecoder(JwtKeys keys, JwtProperties props) {
+        var decoder = NimbusJwtDecoder.withPublicKey(keys.activePublicKey()).build();
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(props.issuer()));
         return decoder;
     }
 

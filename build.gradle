@@ -53,6 +53,9 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // Boot 4 modularizó también el soporte de pruebas: @WebMvcTest vive en este
+    // artefacto aparte y ya no llega transitivamente con spring-boot-starter-test.
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
 
     // Testcontainers 2.x (gestionado por el BOM de Spring Boot 4.1.1) renombró
     // los módulos con el prefijo 'testcontainers-'; los artefactos antiguos
@@ -61,6 +64,14 @@ dependencies {
     integrationTestImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     integrationTestImplementation 'org.testcontainers:testcontainers-mysql'
     integrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
+    // TestRestTemplate también se modularizó: en Boot 4 vive en este artefacto
+    // aparte (org.springframework.boot.resttestclient), no en spring-boot-test.
+    integrationTestImplementation 'org.springframework.boot:spring-boot-resttestclient'
+    // La autoconfiguración de TestRestTemplate exige un RestTemplateBuilder
+    // (@ConditionalOnBean), que vive en este otro módulo aparte; sin él, la
+    // comprobación de la condición revienta con ClassNotFoundException en vez
+    // de simplemente no aplicarse.
+    integrationTestImplementation 'org.springframework.boot:spring-boot-restclient'
 }
 
 tasks.named('test') {
