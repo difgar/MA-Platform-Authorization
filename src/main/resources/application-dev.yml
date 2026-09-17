@@ -1,8 +1,24 @@
+server:
+  # 18081 en local a pedido del equipo. OJO: 18081 es el puerto de management en
+  # el resto de los perfiles, así que aquí management se mueve a 28081 para no
+  # colisionar. La API queda en http://localhost:18081/authorization-api
+  port: 18081
+
+management:
+  server.port: 28081
+
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/ma_platform_auth
-    username: ma-platform-user
-    password: ma-platform-password
+    # PostgreSQL en local, no MySQL: producción migra a Postgres y el entorno de
+    # desarrollo debe parecerse a donde se va, no a donde se viene. Las
+    # migraciones son las mismas para ambos motores -es el objetivo del diseño-
+    # y la suite de integración sigue probando los dos.
+    #
+    # La base de datos debe estar VACÍA la primera vez: Flyway aborta ante un
+    # esquema no vacío sin tabla de historia, para no correr contra tablas ajenas.
+    url: jdbc:postgresql://localhost:5432/ma_auth
+    username: ma_auth
+    password: ma_auth
 
 authorization:
   jwt:
@@ -10,7 +26,8 @@ authorization:
     # commitea SOLO porque es de desarrollo: no protege nada real, nunca sale
     # de este perfil y no debe reutilizarse en ningún entorno desplegado. En
     # todos los demás perfiles, JWT_KEY_LOCATIONS (ver application.yml) la
-    # sobrescribe con la ruta del Secret montado en el pod.
+    # sobrescribe con la ruta del Secret montado en el pod. bootJar la excluye
+    # del artefacto, así que no viaja a producción ni por accidente.
     key-locations: classpath:dev-keys/active.jwk
   cors:
     allowed-origins: http://localhost:3000,http://localhost:5173

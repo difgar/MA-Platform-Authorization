@@ -1,16 +1,16 @@
 steps:
-  # 'gradle check' incluye 'integrationTest', que levanta contenedores con
-  # Testcontainers (MySQL y PostgreSQL). No hay forma de comprobar desde aquí
-  # si el *builder* de este proyecto en Cloud Build puede hacer Docker dentro
-  # de Docker, así que este paso corre solo 'test' (unidad) para no asumirlo.
-  # 'integrationTest' necesita wiring aparte: un trigger propio con un runner
-  # que sí tenga Docker disponible (o el patrón "Docker outside of Docker" con
-  # el socket montado, si ese es el caso de este proyecto de Cloud Build;
-  # compruébalo antes del primer despliegue en vez de suponerlo).
-  - name: 'gradle:jdk25'
-    entrypoint: './gradlew'
-    args: ['test']
-    id: Test
+  # AQUÍ NO SE EJECUTAN TESTS, a propósito.
+  #
+  # Los 60 tests de integración levantan contenedores reales de MySQL y
+  # PostgreSQL con Testcontainers, y cada paso de Cloud Build corre YA dentro de
+  # un contenedor: necesitarían Docker dentro de Docker, que exige montar el
+  # socket del demonio o un sidecar privilegiado. En lugar de asumir que este
+  # proyecto lo permite, la suite se queda fuera del despliegue.
+  #
+  # Consecuencia que hay que conocer: este pipeline NO es una puerta de calidad.
+  # Compila y despliega lo que le den. La suite completa (120 tests, ambos
+  # motores) se ejecuta en local con './gradlew clean test integrationTest' y
+  # debe pasar ANTES de etiquetar, porque nada aquí lo va a impedir.
   - name: 'gradle:jdk25'
     entrypoint: './gradlew'
     # Sin '-Denv=${_ENVIRONMENT}': nada lo lee desde que se quitó el bloque
