@@ -4,3 +4,13 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+authorization:
+  jwt:
+    issuer: https://auth.mobile-americas.com
+    # SOLO PARA TESTS: 'test-keys/active.jwk' está deliberadamente commiteado
+    # en el repositorio. No es la clave de ningún entorno real; sirve
+    # únicamente para que el contexto de Spring arranque en las pruebas
+    # de integración.
+    key-locations:
+      - classpath:test-keys/active.jwk
