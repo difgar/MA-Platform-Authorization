@@ -198,7 +198,19 @@ de las dos posiciones.
 `SELECT DISTINCT resource FROM auth_permission WHERE app_id = ? AND resource <> '*'`,
 así que no hace falta una tabla extra. Consecuencia buscada: el token lleva
 siempre autoridades concretas y **cualquier *resource server* estándar funciona
-con `hasAuthority` sin una línea de código propio**.
+con `hasAuthority` sin una línea de código propio** — pero sí con dos líneas de
+configuración, porque por defecto un *resource server* lee las autoridades del
+claim `scope`/`scp` y con el prefijo `SCOPE_`:
+
+```yaml
+spring.security.oauth2.resourceserver.jwt:
+  authorities-claim-name: permissions   # no 'scope'
+  authority-prefix: ""                  # no 'SCOPE_'
+```
+
+Sin configuración, no hay código propio pero tampoco autoridades: `hasAuthority`
+no encontraría nada. Las tres propiedades que todo consumidor necesita —estas dos
+más `audiences`— van juntas en el README de §6.
 
 De ahí se sigue una obligación que no es opcional: **cada app debe declarar sus
 permisos concretos** (su catálogo), porque el comodín se expande contra ellos.
@@ -254,8 +266,25 @@ RS256, 15 minutos, `kid` en la cabecera:
 
 - `sub` es el UUID del usuario, no el email: el email puede cambiar y `sub` debe
   ser estable.
-- `aud` es el nombre de la app. Un token emitido para `admin` **no vale** contra
-  TrafficFlow: lo rechaza el propio *resource server*, sin código nuestro.
+- `aud` es el nombre de la app. Un token emitido para `admin` no debe valer
+  contra TrafficFlow, y de eso se encarga el propio *resource server* sin código
+  nuestro — **pero solo si el consumidor declara la audiencia esperada**:
+
+  ```yaml
+  spring.security.oauth2.resourceserver.jwt:
+    jwk-set-uri: https://auth.mobile-americas.com/authorization-api/.well-known/jwks.json
+    audiences: trafficflow      # ← SIN esta línea, el aud NO se comprueba
+  ```
+
+  ⚠️ Esto es obligatorio, no una opción. Verificado en el bytecode de Spring Boot
+  4.1.1 (`JwtDecoderConfiguration`): el validador de `aud` se añade únicamente
+  cuando `audiences` no está vacío. Con `jwk-set-uri` a secas, el decodificador
+  ejecuta `JwtValidators.createDefault()`, que comprueba `exp`, `nbf` y el emisor
+  si está configurado, y **nunca** `aud`. Un consumidor que configure solo el
+  JWKS aceptará tokens de `admin` en el servicio de `trafficflow`.
+
+  Una versión anterior de este documento afirmaba el aislamiento sin esa
+  condición. Era falso y habría producido exactamente ese agujero en la fase 3.
 - `permissions` son autoridades concretas, ya expandidas (§4.2).
 
 ### 5.2 Refresh token
