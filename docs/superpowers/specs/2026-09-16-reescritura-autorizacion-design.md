@@ -78,7 +78,7 @@ leen de la base de datos, nunca del token anterior.**
 | 3 | **CRUD completo por API** de las 5 entidades + `auth_audit` | Operar sin despliegues. La auditoría compensa que los cambios de estructura ya no queden en git |
 | 4 | **Permisos `recurso:verbo`** con comodín | `create` a secas no expresa "edita campañas pero no toca redes", que es el caso normal en TrafficFlow |
 | 5 | Secretos: **Secret de Kubernetes**, no driver CSI | Es el patrón de los otros 18 servicios. El CSI no lo usa nadie en la plataforma |
-| 6 | Los `Service` se **traen a este repo** | El desajuste de puertos existe porque `Deployment` y `Service` viven en repos distintos y nada los compara |
+| 6 | Los `Service` se **quedan en `MA-Platform-config`**, sin tocar | El desajuste está solo en el lado de la aplicación: el `Service` ya apunta a 8081 y el `ConfigMap` ya define `SERVER_PORT: "8081"`. Arreglando `application.yml` concuerdan sin tocar el otro repo. Se revisa cuando esto esté funcionando |
 | 7 | Branch desde `origin/develop` | Es el estado más avanzado y el que `MA-Platform-UI` consume |
 
 ### 2.1 Versiones
@@ -411,11 +411,20 @@ y la JVM muere sin apagado ordenado.
 
 **Manifiestos**
 
-Los dos `Service` se traen desde `MA-Platform-config/gcp/prod/` a
-`kubernetes/service.yaml` de este repo, y se borran de allí. El Cloud Build de
-este repo ya despliega esa carpeta (`_K8S_YAML_PATH: kubernetes/`), así que
-`Deployment` y `Service` pasan a versionarse y desplegarse juntos. Es
-exactamente lo que habría evitado el desajuste de puertos de §1.
+Los dos `Service` se quedan en `MA-Platform-config/gcp/prod/` y **no se tocan**.
+
+No hace falta: el `Service` ya declara `port: 8081, targetPort: 8081` y el
+`ConfigMap` ya define `SERVER_PORT: "8081"`. El único lado equivocado es
+`application.yml`, que fija 18080 literal e ignora la variable. Con
+`port: ${SERVER_PORT:8081}` los dos repos concuerdan sin modificar ninguno de
+los 18 servicios que comparten ese patrón.
+
+El puerto de management (18081) **no se expone** en ningún `Service`, que es lo
+correcto: `/actuator/**` no debe ser alcanzable desde fuera del clúster.
+
+Queda anotado para revisar cuando el servicio esté funcionando: si algún día
+`Deployment` y `Service` vuelven a divergir, la causa será que viven en repos
+distintos y nada los compara.
 
 Se añaden al `Deployment`:
 
