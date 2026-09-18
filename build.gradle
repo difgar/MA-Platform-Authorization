@@ -44,7 +44,6 @@ dependencies {
     // SPRING_SESSION nunca se escribe y 'spring.session.*' no configura nada.
     implementation 'org.springframework.boot:spring-boot-session-jdbc'
     implementation 'org.springframework.security:spring-security-oauth2-jose'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.flywaydb:flyway-core'
@@ -57,10 +56,6 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    // Boot 4 modularizó también el soporte de pruebas: @WebMvcTest vive en este
-    // artefacto aparte y ya no llega transitivamente con spring-boot-starter-test.
-    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
 
     // Testcontainers 2.x (gestionado por el BOM de Spring Boot 4.1.1) renombró
     // los módulos con el prefijo 'testcontainers-'; los artefactos antiguos
@@ -82,6 +77,18 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
     testLogging { events 'failed' }
+    // El jar que se despliega es una ENTRADA de esta suite desde que
+    // ArtefactoSinClavesDeDesarrolloTest lo abre para comprobar que no lleva
+    // dentro dev-keys/active.jwk. Sin esto, './gradlew test' a secas correría
+    // sin jar que mirar y la prueba no podría afirmar nada.
+    def artefacto = tasks.named('bootJar').flatMap { it.archiveFile }
+    inputs.file(artefacto).withPropertyName('artefactoDeDespliegue')
+    systemProperty 'ma.artefacto', artefacto.get().asFile.absolutePath
+    // Y el descriptor de Kubernetes, que EmisorDeProduccionTest y
+    // ReplicaUnicaTest leen por ruta de fichero: sin declararlo como entrada,
+    // cambiar 'replicas' o el ConfigMap deja la tarea UP-TO-DATE y esos dos
+    // guardianes ni se ejecutan.
+    inputs.file('kubernetes/deployment.yaml').withPropertyName('descriptorDeDespliegue')
 }
 
 tasks.named('bootRun') {
@@ -120,5 +127,10 @@ bootJar {
     // una clave conocida públicamente es que el perfil 'dev' también apunta el
     // datasource a localhost -fail-closed por accidente, no por diseño-, así
     // que no tiene sentido empaquetarla en el artefacto que se despliega.
+    //
+    // Esta línea es una afirmación de seguridad sobre el empaquetado, repetida
+    // en application-dev.yml y en el README, y hasta ahora no la comprobaba
+    // nada: la verifica ArtefactoSinClavesDeDesarrolloTest, que abre el jar
+    // construido y falla si encuentra dev-keys/ dentro.
     exclude 'dev-keys/**'
 }
