@@ -1,36 +1,23 @@
 package com.mobileamericas.authorization.config;
 
-import com.mobileamericas.authorization.adapter.google.GoogleProperties;
 import com.mobileamericas.authorization.adapter.token.JwtKeys;
 import com.mobileamericas.authorization.adapter.token.JwtProperties;
-import com.mobileamericas.authorization.adapter.token.RsaTokenIssuer;
-import com.mobileamericas.authorization.application.port.AppRepository;
-import com.mobileamericas.authorization.application.port.IdentityVerifier;
-import com.mobileamericas.authorization.application.port.RefreshTokenStore;
-import com.mobileamericas.authorization.application.port.TokenIssuer;
-import com.mobileamericas.authorization.application.port.UserRepository;
-import com.mobileamericas.authorization.application.service.AuthenticationService;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.ResourceLoader;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.jwt.JwtClaimValidator;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 /**
  * Cableado de beans de la aplicación.
  */
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, GoogleProperties.class})
+@EnableConfigurationProperties(JwtProperties.class)
 public class BeansConfig {
 
     @Bean
@@ -41,85 +28,10 @@ public class BeansConfig {
         return JwtKeys.fromJson(jwks);
     }
 
+    /** Lo consume el authorization server para firmar. */
     @Bean
-    TokenIssuer tokenIssuer(JwtKeys keys, JwtProperties props) {
-        return new RsaTokenIssuer(keys, props);
-    }
-
-    /**
-     * Decodificador singleton para los ID token de Google: cachea las claves
-     * públicas de Google internamente. El código anterior construía un
-     * GoogleIdTokenVerifier nuevo en cada petición, lo que anulaba esa caché.
-     *
-     * withJwkSetUri(...) resuelve el JWKS de forma perezosa, en el primer
-     * decode(), no al construir el bean: así el contexto de Spring arranca sin
-     * red, lo que necesitan las pruebas de integración (sandbox sin internet).
-     *
-     * JwtValidators.createDefault() SOLO comprueba 'exp'/'nbf'; el 'iss' no se
-     * valida en absoluto por defecto, aunque GoogleProperties.acceptedIssuers()
-     * exista y sugiera lo contrario a quien lea la configuración. Se añade
-     * aparte, comprobando membresía en esa lista en vez de igualdad contra un
-     * único valor, por las dos formas legítimas del 'iss' de Google
-     * documentadas ahí.
-     */
-    @Bean
-    JwtDecoder googleJwtDecoder(GoogleProperties props) {
-        var decoder = NimbusJwtDecoder.withJwkSetUri(props.jwkSetUri()).build();
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefault(),
-                new JwtClaimValidator<String>("iss",
-                        iss -> iss != null && props.acceptedIssuers().contains(iss))));
-        return decoder;
-    }
-
-    /**
-     * Decodificador de NUESTROS tokens, para /v1/auth/me.
-     *
-     * @Primary porque es el que usa la cadena de seguridad; el de Google se
-     * inyecta por nombre en GoogleIdentityVerifier, así que no hay ambigüedad
-     * en ese punto pese a que ahora coexisten dos beans de JwtDecoder.
-     *
-     * Usa la clave ACTIVA únicamente. Durante una rotación, un token firmado
-     * con la clave anterior no valida aquí hasta que su portador renueve, lo
-     * que ocurre como mucho 15 minutos después (la duración del access token).
-     * Los consumidores externos no tienen ese límite: leen el JWKS completo
-     * (JwksController), que sí publica todas las claves vigentes.
-     *
-     * Solo se añade una comprobación de PRESENCIA de 'aud': rechaza un token
-     * cuyo 'aud' venga ausente o vacío. JwtValidators.createDefaultWithIssuer()
-     * comprueba 'exp', 'nbf' e 'iss', pero nunca 'aud', y las autoridades no
-     * llevan el nombre de la app (p.ej. 'usuarios:borrar', no
-     * 'admin:usuarios:borrar'), así que 'aud' es lo único que separaría los
-     * espacios de nombres entre apps si algún día hubiera un
-     * hasAuthority()/@PreAuthorize aquí. HOY no lo hay (verificado: ningún
-     * hasAuthority ni @PreAuthorize en src/main), así que esa restricción de
-     * VALOR pertenece al endpoint que lo necesite, no a este decodificador
-     * compartido por /v1/auth/me para CUALQUIER app (ver
-     * "Criterios de entrada de la fase 2" en README.md). Consultar
-     * AppRepository desde aquí para validar el valor costaría una consulta a
-     * la base de datos por token decodificado y arriesgaría un ciclo de beans,
-     * sin ninguna comprobación de autoridad hoy que lo justifique.
-     */
-    @Bean
-    @Primary
-    JwtDecoder selfJwtDecoder(JwtKeys keys, JwtProperties props) {
-        var decoder = NimbusJwtDecoder.withPublicKey(keys.activePublicKey()).build();
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(props.issuer()),
-                new JwtClaimValidator<List<String>>("aud", aud -> aud != null && !aud.isEmpty())));
-        return decoder;
-    }
-
-    /**
-     * AuthenticationService no lleva anotación de Spring: application/ no
-     * puede importar el framework. Se cablea aquí, a mano, a partir de sus
-     * cinco colaboradores.
-     */
-    @Bean
-    AuthenticationService authenticationService(IdentityVerifier identidades, UserRepository usuarios,
-                                                 AppRepository apps, TokenIssuer emisor,
-                                                 RefreshTokenStore refrescos) {
-        return new AuthenticationService(identidades, usuarios, apps, emisor, refrescos);
+    JWKSource<SecurityContext> jwkSource(JwtKeys keys) {
+        return keys.jwkSource();
     }
 
     private String leer(ResourceLoader loader, String location) {

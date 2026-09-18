@@ -1,4 +1,4 @@
-package com.mobileamericas.authorization.web;
+package com.mobileamericas.authorization.oauth;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -8,7 +8,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class SeguridadPostgresIT extends SeguridadIT {
+class DescubrimientoPostgresIT extends DescubrimientoIT {
 
     @Container
     @ServiceConnection

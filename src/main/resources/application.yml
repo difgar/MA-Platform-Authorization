@@ -47,18 +47,8 @@ management:
 authorization:
   jwt:
     issuer: ${JWT_ISSUER:https://auth.mobile-americas.com}
-    access-ttl: PT15M
-    refresh-ttl: PT12H
     # La primera es la activa. Durante una rotación se declaran dos.
     key-locations: ${JWT_KEY_LOCATIONS:file:/etc/ma-auth/keys/active.jwk}
-  google:
-    # GoogleProperties se autocompleta con estos mismos valores si se omiten
-    # (ver GoogleProperties.java); se fijan aquí solo para que la configuración
-    # real del servicio sea visible sin tener que leer el código.
-    jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
-    accepted-issuers:
-      - https://accounts.google.com
-      - accounts.google.com
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://*.mobile-americas.com}
 

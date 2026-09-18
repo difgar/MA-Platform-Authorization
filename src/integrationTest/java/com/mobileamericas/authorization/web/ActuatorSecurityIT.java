@@ -65,13 +65,21 @@ class ActuatorSecurityIT {
     void env_expuesto_sin_querer_sigue_exigiendo_autenticacion() throws Exception {
         // Con exposure.include ampliado a mano para incluir 'env', Boot SÍ
         // registra el endpoint (a diferencia del escenario con la exposición
-        // por defecto). Lo que se comprueba aquí es que, aun así, sigue
-        // devolviendo 401 y no 200: el matcher de actuatorFilterChain() no
-        // lo cubre, así que cae en el anyRequest().authenticated() de
-        // filterChain().
+        // por defecto). Lo que se comprueba aquí es que, aun así, sigue sin
+        // dar 200: el matcher de actuatorFilterChain() no lo cubre, así que
+        // cae en el anyRequest().authenticated() de filterChain().
+        //
+        // 401 o 403, no un código concreto: cuál de los dos sale lo decide el
+        // AuthenticationEntryPoint de la cadena de cierre, y ese depende del
+        // mecanismo de autenticación que tenga configurado. Con la emisión
+        // propia de la fase 1 era el del resource server (401 con
+        // WWW-Authenticate: Bearer); retirada esa, hoy no hay ningún mecanismo
+        // y Spring Security usa el suyo por defecto (403). Lo que esta prueba
+        // vigila es que /actuator/env no quede abierto, no cuál de los dos
+        // rechazos toca en cada momento del rediseño.
         var respuesta = get("/actuator/env");
 
-        assertThat(respuesta.statusCode()).isEqualTo(401);
+        assertThat(respuesta.statusCode()).isIn(401, 403);
     }
 
     @Test

@@ -88,11 +88,16 @@ public final class JwtKeys {
         }
     }
 
-    // Package-private a propósito: su único consumidor es RsaTokenIssuer, en
-    // este mismo paquete. RSAKey.toString() vuelca la clave privada entera, así
-    // que un acceso público facilitaría que cualquier clase de cualquier
-    // paquete la obtenga y acabe registrándola por accidente.
-    JWKSource<SecurityContext> jwkSource() {
+    /**
+     * El conjunto completo, con parte privada.
+     *
+     * La fase 1 lo estrechó a package-private y dejó dicho que reabrirlo exigiría
+     * un motivo escrito. Este es el motivo: Spring Authorization Server pide un
+     * bean JWKSource<SecurityContext> para firmar, y vive en otro paquete.
+     *
+     * Sigue sin exponerse por ningún endpoint: lo público es publicJwks().
+     */
+    public JWKSource<SecurityContext> jwkSource() {
         return new ImmutableJWKSet<>(new JWKSet(List.copyOf(keys)));
     }
 

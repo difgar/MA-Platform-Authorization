@@ -1,7 +1,5 @@
 package com.mobileamericas.authorization.web;
 
-import com.mobileamericas.authorization.application.port.IdentityVerifier;
-import com.mobileamericas.authorization.application.service.AuthenticationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -22,44 +20,26 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * {@code @ExceptionHandler(Exception.class)} de más abajo intercepta ANTES que
  * {@code ResponseStatusExceptionResolver} y {@code DefaultHandlerExceptionResolver},
  * así que una excepción de Spring MVC con su propio status —por ejemplo
- * {@code MissingRequestCookieException} cuando falta 'ma_refresh' en
- * POST /v1/auth/refresh, que es permitAll— se convertía en 500 con traza en el
- * log en vez del 400 que le corresponde. Como esa ruta es pública, cualquier
- * llamador anónimo podía forzar trazas ERROR en el log a voluntad con solo
- * omitir la cookie: el objetivo era mandar la traza al log, no dejar que un
- * extraño decida cuándo se escribe. ResponseEntityExceptionHandler ya sabe
- * traducir esas excepciones (ServletRequestBindingException,
- * HttpRequestMethodNotSupportedException, NoResourceFoundException...) a su
- * ProblemDetail correcto; los dos manejadores de más abajo siguen ganando por
- * ser más específicos.
+ * un parámetro obligatorio ausente en una ruta pública— se convertía en 500
+ * con traza en el log en vez del 400 que le corresponde. Como esas rutas son
+ * públicas, cualquier llamador anónimo podía forzar trazas ERROR en el log a
+ * voluntad con solo omitir el parámetro: el objetivo era mandar la traza al
+ * log, no dejar que un extraño decida cuándo se escribe.
+ * ResponseEntityExceptionHandler ya sabe traducir esas excepciones
+ * (ServletRequestBindingException, HttpRequestMethodNotSupportedException,
+ * NoResourceFoundException...) a su ProblemDetail correcto; los manejadores de
+ * más abajo siguen ganando por ser más específicos.
  */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
-    @ExceptionHandler(IdentityVerifier.IdentityRejectedException.class)
-    ProblemDetail identidadRechazada(IdentityVerifier.IdentityRejectedException e) {
-        log.info("Identidad rechazada: {}", e.getMessage());
-        var p = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
-        p.setTitle("Identidad no válida");
-        return p;
-    }
-
-    @ExceptionHandler(AuthenticationService.AccessDeniedException.class)
-    ProblemDetail accesoDenegado(AuthenticationService.AccessDeniedException e) {
-        log.info("Acceso denegado: {}", e.getMessage());
-        var p = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
-        p.setTitle("Acceso denegado");
-        return p;
-    }
-
     /**
      * NO se traduce aquí: se relanza a propósito.
      *
-     * org.springframework.security.access.AccessDeniedException (distinta de
-     * AuthenticationService.AccessDeniedException, de más arriba) es la que
-     * lanza un método protegido con @PreAuthorize (fase 2, ya habilitado por
+     * org.springframework.security.access.AccessDeniedException es la que
+     * lanza un método protegido con @PreAuthorize (habilitado por
      * @EnableMethodSecurity en SecurityConfig). Esa excepción nace DENTRO de
      * la invocación del controlador, en el mismo hilo y la misma pila que
      * @ExceptionHandler(Exception.class); si se atrapara ahí, quedaría resuelta

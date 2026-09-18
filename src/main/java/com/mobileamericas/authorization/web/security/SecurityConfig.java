@@ -8,13 +8,11 @@ import org.springframework.boot.security.autoconfigure.actuate.web.servlet.Endpo
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -64,7 +62,59 @@ class SecurityConfig {
                 .build();
     }
 
+    /**
+     * La cadena del authorization server: /oauth2/**, /.well-known/** y los
+     * endpoints OIDC. Sólo cubre lo que declara getEndpointsMatcher(); todo lo
+     * demás cae en la cadena de cierre de más abajo.
+     *
+     * .oidc(...) no es opcional: sin él no hay documento de descubrimiento
+     * OpenID (/.well-known/openid-configuration) ni end_session_endpoint, que
+     * es justo lo que la SPA necesita para cerrar sesión. Ver DescubrimientoIT.
+     *
+     * Esta cadena NO autentica a nadie: si /oauth2/authorize llega sin sesión,
+     * la petición se redirige al login que establece la cadena de cierre. Con
+     * una sola cadena declarada, /oauth2/authorize responde 401 con
+     * WWW-Authenticate y el flujo no arranca nunca.
+     *
+     * CSRF ignorado SOLO para este matcher (no deshabilitado en general): el
+     * canje del código es un POST de servidor a servidor -o de la SPA con
+     * PKCE- que no puede traer token CSRF. La cadena de cierre conserva la
+     * protección para todo lo demás.
+     */
     @Bean
+    @Order(1)
+    SecurityFilterChain authorizationServerFilterChain(
+            HttpSecurity http,
+            // Mismo @Qualifier y mismo motivo que en la cadena de cierre.
+            @Qualifier("corsConfigurationSource") CorsConfigurationSource cors)
+            throws Exception {
+        var authorizationServer = new OAuth2AuthorizationServerConfigurer();
+        var endpoints = authorizationServer.getEndpointsMatcher();
+
+        return http
+                .securityMatcher(endpoints)
+                .with(authorizationServer, cfg -> cfg.oidc(Customizer.withDefaults()))
+                // La SPA canjea el código con POST /oauth2/token desde su propio
+                // origen: sin CORS el navegador ni siquiera envía la petición.
+                .cors(c -> c.configurationSource(cors))
+                .csrf(csrf -> csrf.ignoringRequestMatchers(endpoints))
+                .build();
+    }
+
+    /**
+     * Cierre por defecto: todo lo que no sea actuator ni authorization server
+     * exige autenticación.
+     *
+     * Hoy no hay ningún mecanismo con el que autenticarse, y es lo esperado en
+     * este punto del rediseño: la emisión propia de la fase 1 ya no está y el
+     * login con Google (oauth2Login) llega después, ampliando esta misma
+     * cadena. Mientras tanto, denegar es la respuesta correcta.
+     *
+     * Ya no se declara STATELESS: el flujo de código de autorización necesita
+     * una sesión de servidor entre el login y /oauth2/authorize.
+     */
+    @Bean
+    @Order(2)
     SecurityFilterChain filterChain(
             HttpSecurity http,
             // Spring MVC también expone HandlerMappingIntrospector como
@@ -75,52 +125,10 @@ class SecurityConfig {
             throws Exception {
         return http
                 .cors(c -> c.configurationSource(cors))
-                // Sin CSRF porque no hay sesión de servidor y ninguna escritura es
-                // un GET. El access token se acepta tanto por cabecera Authorization
-                // (servicio a servicio) como por la cookie ma_access
-                // (CookieBearerTokenResolver, para el navegador). Aceptar la cookie
-                // reabre en principio la superficie CSRF que motivó esta decisión;
-                // lo que la cierra de verdad es SameSite=Lax en esa cookie
-                // (CookieFactory): un POST cross-site no la envía, así que un
-                // formulario ajeno no puede autenticarse con ella. SameSite=Lax deja
-                // de ser un detalle cosmético en el momento en que la cookie se
-                // acepta como credencial: es el control que sostiene toda esta
-                // decisión.
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers(HttpMethod.POST,
-                                "/v1/auth/google", "/v1/auth/refresh", "/v1/auth/logout").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers("/error").permitAll()
-                        // Denegar por defecto. Antes: .anyRequest().permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(o -> o
-                        .bearerTokenResolver(new CookieBearerTokenResolver())
-                        .jwt(j -> j.jwtAuthenticationConverter(conversor())))
                 .build();
-    }
-
-    /**
-     * Las autoridades salen del claim 'permissions' tal cual, sin prefijo.
-     *
-     * Por defecto, un resource server de Spring Security lee las autoridades
-     * del claim 'scope'/'scp' con el prefijo 'SCOPE_'. Sin este conversor,
-     * hasAuthority('usuarios:editar') no encontraría nunca esa autoridad,
-     * porque nuestros tokens no llevan 'scope' y las autoridades reales viven
-     * en 'permissions' sin prefijo. Los consumidores de este servicio logran
-     * el mismo efecto por propiedades:
-     * spring.security.oauth2.resourceserver.jwt.authorities-claim-name=permissions
-     * spring.security.oauth2.resourceserver.jwt.authority-prefix=
-     */
-    private static JwtAuthenticationConverter conversor() {
-        var autoridades = new JwtGrantedAuthoritiesConverter();
-        autoridades.setAuthorityPrefix("");
-        autoridades.setAuthoritiesClaimName("permissions");
-
-        var conversor = new JwtAuthenticationConverter();
-        conversor.setJwtGrantedAuthoritiesConverter(autoridades);
-        return conversor;
     }
 
     /**
