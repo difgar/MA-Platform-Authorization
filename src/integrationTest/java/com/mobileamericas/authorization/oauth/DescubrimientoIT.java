@@ -90,6 +90,11 @@ public abstract class DescubrimientoIT extends BaseIT {
      * localhost:{puerto}, que es exactamente lo que volvería a salir si
      * alguien retirara la propiedad, Boot la renombrara, o un
      * AuthorizationServerSettings propio la dejara sin efecto.
+     *
+     * Lo que esta prueba NO dice -y se ha leído como si lo dijera- es que esos
+     * endpoints respondan: anunciar una URL no cuesta nada. Que /userinfo sirva
+     * claims con un token emitido de verdad lo prueba
+     * FlujoCompletoIT.el_userinfo_devuelve_claims_con_un_token_emitido.
      */
     @Test
     void el_emisor_declarado_manda_sobre_el_host_de_la_peticion() {

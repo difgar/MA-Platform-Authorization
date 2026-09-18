@@ -125,6 +125,11 @@ public abstract class RegistroDeClientesIT extends BaseIT {
 
         assertThat(c).isNotNull();
         assertThat(c.getClientId()).isEqualTo("temporal-por-id");
+        // Y que el id del RegisteredClient sea el de auth_app, no uno
+        // inventado por el adaptador: es el identificador con el que el
+        // end_session_endpoint vuelve a buscar el cliente, así que un id que
+        // no case rompe el logout aunque la búsqueda de arriba funcione.
+        assertThat(c.getId()).isEqualTo(id);
     }
 
     /** Fila de auth_app aislada por prueba: no depende del orden de ejecución ni pisa admin/fgf. */

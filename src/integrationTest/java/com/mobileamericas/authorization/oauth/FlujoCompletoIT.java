@@ -1,6 +1,7 @@
 package com.mobileamericas.authorization.oauth;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -23,6 +24,8 @@ import java.net.http.HttpResponse;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +93,12 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         assertThat(claims.get("permissions")).asInstanceOf(LIST)
                 .hasSize(12)
                 .doesNotContain("*:*", "*:borrar", "admin:usuarios:borrar");
+        // El TTL, sobre un token EMITIDO. RegistroDeClientesIT afirma el
+        // TokenSettings que sale de auth_app.access_ttl_seconds, que es la
+        // configuración; que el token firmado dure de verdad eso -y no el
+        // valor por defecto de 5 minutos del framework- sólo se ve aquí.
+        assertThat(Duration.between((Instant) claims.get("iat"), (Instant) claims.get("exp")))
+                .isEqualTo(Duration.ofHours(2));
 
         var identidad = decodificar(token.get("id_token"));
         assertThat(identidad.get("aud")).isEqualTo(List.of("admin"));
@@ -102,6 +111,83 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         // manda avatar: un claim AUSENTE, no uno a null, que induciría a creer
         // que el dato se conoce y está vacío.
         assertThat(identidad).doesNotContainKeys("name", "picture");
+    }
+
+    /**
+     * /userinfo con un token emitido de verdad, que es la única forma de saber
+     * si ese endpoint sirve claims.
+     *
+     * Hasta ahora lo único que lo miraba era DescubrimientoIT, que comprueba
+     * que la URL SE ANUNCIA en el documento de descubrimiento; anunciar un
+     * endpoint no cuesta nada y no demuestra que responda. Esta prueba recorre
+     * el flujo entero y llama al endpoint anunciado con el access token.
+     *
+     * Quién autentica ese bearer, que no es evidente leyendo SecurityConfig:
+     * la cadena @Order(1) no declara ningún .oauth2ResourceServer(...), pero
+     * OAuth2AuthorizationServerConfigurer.init() llama a
+     * http.oauth2ResourceServer(rs -> rs.jwt(...)) por su cuenta en cuanto el
+     * OidcConfigurer trae el endpoint UserInfo (verificado en el bytecode de
+     * spring-security-config 7.1.1), y el JwtDecoder lo autoconfigura Boot a
+     * partir del bean JWKSource. Sin ese filtro, el anyRequest().authenticated()
+     * de la cadena respondería 401 a toda llamada -el filtro del endpoint se
+     * inserta DESPUÉS del AuthorizationFilter- y /userinfo estaría anunciado y
+     * muerto. Esta prueba es lo que distingue un caso del otro.
+     *
+     * Y se afirma que el único claim que vuelve es 'sub': el mapeador por
+     * defecto (OidcUserInfoAuthenticationProvider$DefaultOidcUserInfoMapper,
+     * también verificado en bytecode) parte de los claims del ID token y se
+     * queda con los que pide el scope del access token -'sub' siempre,
+     * 'email'/'email_verified' con el scope 'email', los de perfil con
+     * 'profile'-. Con el scope mínimo de esta fase ('openid' y nada más),
+     * /userinfo NO devuelve el correo: quien lo necesite lo tiene en el ID
+     * token. Si alguien amplía los scopes o pone un userInfoMapper propio,
+     * esta aserción le obliga a decidirlo a propósito.
+     */
+    @Test
+    void el_userinfo_devuelve_claims_con_un_token_emitido() {
+        var token = tokenPara("usuario1@pendiente.local", "admin");
+
+        assertThat(pedirUserInfo(null).statusCode())
+                .as("sin token no se sirven los claims de nadie")
+                .isEqualTo(401);
+        // Un token que no verifica contra el JWKS tampoco entra: lo que
+        // autentica es la firma, no la presencia de la cabecera.
+        assertThat(pedirUserInfo(token.substring(0, token.length() - 4) + "AAAA").statusCode())
+                .as("una firma que no cuadra no puede valer lo mismo que una que sí")
+                .isEqualTo(401);
+
+        var conToken = pedirUserInfo(token);
+
+        assertThat(conToken.statusCode())
+                .as("con un token emitido por este mismo servidor: %s", conToken.body())
+                .isEqualTo(200);
+        var claims = JSON.readValue(conToken.body(), new TypeReference<Map<String, Object>>() {});
+        assertThat(claims).containsEntry("sub", "usuario1@pendiente.local");
+        assertThat(claims)
+                .as("con scope 'openid' el mapeador por defecto sólo deja pasar 'sub'; "
+                        + "el correo viaja en el ID token, no aquí")
+                .containsOnlyKeys("sub");
+    }
+
+    /**
+     * GET al userinfo_endpoint que anuncia el descubrimiento -no a una ruta
+     * fijada aquí-, con el access token como bearer si lo hay.
+     */
+    private HttpResponse<String> pedirUserInfo(String accessToken) {
+        var peticion = HttpRequest.newBuilder(URI.create((String) descubrimiento().get("userinfo_endpoint")))
+                .header("Accept", "application/json")
+                .GET();
+        if (accessToken != null) {
+            peticion.header("Authorization", "Bearer " + accessToken);
+        }
+        try {
+            return CLIENTE.send(peticion.build(), HttpResponse.BodyHandlers.ofString());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrumpido pidiendo /userinfo", e);
+        }
     }
 
     /**
@@ -199,8 +285,14 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         var cookie = iniciarSesionCon("usuario1@pendiente.local");
 
         // post_logout_redirect_uri fuera de auth_app: no debe redirigir ahí.
-        assertThat(cerrarSesionHacia(cookie, "admin", "https://evil.example/")
-                .getHeaders().getLocation())
+        var salida = cerrarSesionHacia(cookie, "admin", "https://evil.example/");
+
+        // El código, primero: sin esta línea el satisfiesAnyOf de abajo pasaría
+        // también con un 500 -que no tiene Location y por tanto cumple la
+        // primera rama-, es decir con el endpoint reventando en vez de
+        // rechazando. El rechazo correcto es el error de OAuth.
+        assertThat(salida.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(salida.getHeaders().getLocation())
                 .satisfiesAnyOf(
                         loc -> assertThat(loc).isNull(),
                         loc -> assertThat(loc.toString()).doesNotContain("evil.example"));
