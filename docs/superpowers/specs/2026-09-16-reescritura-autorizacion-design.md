@@ -514,10 +514,30 @@ opaco rotativo. `/v1/auth/*`, `/v1/auth/me`, JWKS. `/env` eliminado, seguridad
 cerrada por defecto. Despliegue arreglado (§9).
 → *Al acabar esta fase, TrafficFlow ya se puede autenticar y autorizar.*
 
-**Fase 2 — Administración.** CRUD de las 5 entidades, `auth_audit`,
-`@PreAuthorize` por permiso, OpenAPI publicado.
+> ## ⚠️ Renumeración: la fase 2 ya no es el CRUD
+>
+> El 2026-09-18 se intercaló el rediseño de la emisión de tokens sobre Spring
+> Authorization Server, en
+> `docs/superpowers/specs/2026-09-18-oauth-authorization-server-design.md`.
+> **Ese documento sustituye la §5 (Tokens) de este**, y renumera:
+> **fase 2 = rediseño OAuth · fase 3 = CRUD · fase 4 = integración**.
+>
+> El motivo, en una línea: este diseño asumió una topología de cliente que no es
+> la real. Con el *home* y los módulos en subdominios hermanos y buckets
+> independientes, la entrega del token solo por cookie `HttpOnly` no permite al
+> módulo llamar a su propia API en otro host.
+>
+> **Y la escalada que los criterios de abajo intentaban prevenir queda resuelta
+> por construcción**: cada aplicación recibe su propio token con su propia
+> audiencia, así que no existe un token compartido que pueda satisfacer la
+> comprobación de autoridad de otra. Lo que sobrevive de esos criterios es el
+> primero, convertido en requisito permanente de todo consumidor: **declarar
+> `audiences`, o el `aud` no se comprueba**.
 
-> ### ⚠️ Criterios de entrada de la fase 2 — no son recomendaciones
+**Fase 2 — Administración** *(ahora fase 3)*. CRUD de las 5 entidades,
+`auth_audit`, `@PreAuthorize` por permiso, OpenAPI publicado.
+
+> ### ⚠️ Criterios de entrada — no son recomendaciones
 >
 > Ambos salieron de la revisión final de la fase 1 y **tienen que estar antes de
 > que exista el primer endpoint protegido con `@PreAuthorize`**, no después.
