@@ -71,10 +71,27 @@ class SecurityConfig {
      * OpenID (/.well-known/openid-configuration) ni end_session_endpoint, que
      * es justo lo que la SPA necesita para cerrar sesión. Ver DescubrimientoIT.
      *
-     * Esta cadena NO autentica a nadie: si /oauth2/authorize llega sin sesión,
-     * la petición se redirige al login que establece la cadena de cierre. Con
-     * una sola cadena declarada, /oauth2/authorize responde 401 con
-     * WWW-Authenticate y el flujo no arranca nunca.
+     * Esta cadena NO autentica a nadie: no declara ningún mecanismo. Lo que sí
+     * hace es DENEGAR, y de eso se encarga el anyRequest().authenticated() de
+     * más abajo, que no es decorativo ni lo añade el framework por su cuenta:
+     * init() del configurer no llama a authorizeHttpRequests.
+     *
+     * Sin esa línea, una petición anónima y bien formada a /oauth2/authorize
+     * NO se deniega: el proveedor no encuentra principal y el filtro del
+     * endpoint devuelve al navegador a la aplicación que lo mandó con
+     * 302 ...?error=invalid_request&error_description=OAuth 2.0 Parameter:
+     * principal (comprobado, no deducido). Es decir, el usuario que aún no ha
+     * iniciado sesión no acaba en un login: acaba de vuelta en su aplicación
+     * con un error que parece culpa suya. Con la línea, la misma petición da
+     * 401, que es el punto donde engancha el login.
+     *
+     * Ese 401 lo pone el HttpStatusEntryPoint(UNAUTHORIZED) que el propio
+     * configurer registra; al ser el único entry point mapeado, Spring
+     * Security lo usa para toda esta cadena. El redirect al login con Google
+     * no sale de aquí ni de la cadena de cierre -las dos son disjuntas por
+     * securityMatcher, así que la de cierre nunca ve /oauth2/authorize-: llega
+     * en la tarea 5, con un exceptionHandling(LoginUrlAuthenticationEntryPoint)
+     * sobre esta misma cadena. Hasta entonces, 401 es lo correcto y esperado.
      *
      * CSRF ignorado SOLO para este matcher (no deshabilitado en general): el
      * canje del código es un POST de servidor a servidor -o de la SPA con
@@ -94,6 +111,7 @@ class SecurityConfig {
         return http
                 .securityMatcher(endpoints)
                 .with(authorizationServer, cfg -> cfg.oidc(Customizer.withDefaults()))
+                .authorizeHttpRequests(a -> a.anyRequest().authenticated())
                 // La SPA canjea el código con POST /oauth2/token desde su propio
                 // origen: sin CORS el navegador ni siquiera envía la petición.
                 .cors(c -> c.configurationSource(cors))

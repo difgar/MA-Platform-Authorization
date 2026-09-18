@@ -87,12 +87,14 @@ class AccessGrantTest {
 
     @Test
     void una_app_desactivada_no_concede_nada() {
-        // No es redundante con el rechazo de GoogleIdentityVerifier para una
-        // app inactiva: ese solo corre en el login inicial. En el refresco
-        // (AuthenticationService.refresh() -> apps.findById -> AccessGrant.of),
-        // el verificador de Google nunca se ejecuta, así que esta rama es lo
-        // único que impide renovar una sesión existente después de que la app
-        // se desactive.
+        // Esta rama es hoy lo ÚNICO que para una app desactivada. La fase 1
+        // tenía además un rechazo aguas arriba, en el verificador de Google,
+        // pero solo corría en el login inicial y ya no existe: la fase 2
+        // retiró la emisión propia. Con el modelo nuevo el desfase es mayor,
+        // no menor -quien pide un token trae una sesión establecida hace rato
+        // y nadie vuelve a mirar si su app sigue activa-, así que la
+        // comprobación tiene que vivir aquí, en el dominio, donde se construye
+        // cada grant.
         var appDesactivada = new App(APP_ID, "trafficflow", "cliente-123", "https://tf.example", false);
         var usuario = usuarioCon(Set.of(Permission.parse("*:*")));
 
