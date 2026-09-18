@@ -262,14 +262,28 @@ comodines), `AccessGrant`, `JwtKeys` y el JWKS —el framework consume un
 `JWKSource`, que es literalmente lo que ya expone—, las migraciones, la suite de
 doble motor, el despliegue y el toolchain.
 
-> ⚠️ **Corregido en ejecución (revisión de rama).** Esta sección designa
-> `/userinfo` como sustituto de `MeController`, y ni ella ni el plan advierten de
-> que ese endpoint **no funciona** sin `.oauth2ResourceServer(...)` en la cadena
-> del authorization server: su filtro se inserta *después* del
-> `AuthorizationFilter`, y su proveedor exige un principal de tipo token bearer.
-> Sin esa línea, `/userinfo` se anuncia en el documento de descubrimiento y
-> devuelve 401 siempre. Es del mismo género que los cinco hallazgos de §5 y
-> debería haber sido el sexto.
+> ⚠️ **Anotado en ejecución (revisión de rama y ronda de arreglos).** Esta
+> sección designa `/userinfo` como sustituto de `MeController` sin advertir de
+> nada, y la revisión de rama concluyó que ese endpoint **no podía funcionar**
+> sin un `.oauth2ResourceServer(...)` declarado en la cadena del authorization
+> server: su filtro se inserta *después* del `AuthorizationFilter` y su proveedor
+> exige un principal de tipo token bearer (las dos cosas son ciertas).
+>
+> **Al comprobarlo contra el servicio, el endpoint sí responde**, y el motivo es
+> una tercera pieza que faltaba en ese razonamiento: con Spring Security 7.1.1,
+> `OAuth2AuthorizationServerConfigurer.init()` llama él mismo a
+> `http.oauth2ResourceServer(rs -> rs.jwt(...))` en cuanto `.oidc(...)` trae el
+> endpoint UserInfo, y Boot autoconfigura el `JwtDecoder` desde el `JWKSource`.
+> Declarar la línea a mano sería redundante, así que no se declara.
+>
+> Lo que sí faltaba era la prueba: lo único que miraba `/userinfo` comprobaba que
+> la URL **se anuncia** en el documento de descubrimiento. Ahora lo cubre
+> `FlujoCompletoIT.el_userinfo_devuelve_claims_con_un_token_emitido`, que lo
+> llama con un token emitido de verdad.
+>
+> Con el *scope* mínimo de esta fase (`openid`), el mapeador por defecto devuelve
+> **sólo `sub`**: el correo y el nombre viajan en el ID token, que es la otra
+> mitad del sustituto de `MeController`. Ver README, sección «Endpoints».
 
 **Se reemplaza:** `GoogleIdentityVerifier` y `GoogleProperties`,
 `auth_app.google_client_id`, `AuthController`, `CookieFactory`,

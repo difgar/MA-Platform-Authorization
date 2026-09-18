@@ -37,9 +37,19 @@ spring:
     hibernate.ddl-auto: validate     # Flyway manda; Hibernate sólo comprueba
     open-in-view: false
   session:
-    # La sesión SSO vive en la base de datos, no en memoria del pod: el
-    # Deployment corre varias réplicas sin sesión pegajosa, y en memoria cada
-    # pod obligaría a pasar otra vez por Google.
+    # La sesión SSO vive en la base de datos, no en memoria del pod, por dos
+    # motivos: sobrevive a los despliegues (en memoria, cada rollout echa a
+    # todo el mundo) y no depende de sesión pegajosa EL DÍA QUE SE PUEDA
+    # ESCALAR.
+    #
+    # Hoy no se puede, y no por la sesión: el Deployment corre 'replicas: 1' y
+    # el HPA min = max = 1 porque el almacén de autorizaciones es de memoria
+    # (no hay bean OAuth2AuthorizationService), así que un código de
+    # autorización emitido por un pod no se canjea en otro. El porqué completo
+    # está en el comentario de 'replicas' de kubernetes/deployment.yaml y en
+    # el README, sección «Réplicas». Este comentario decía que ya se corren
+    # varias réplicas: era cierto cuando se escribió y dejó de serlo al fijar
+    # replicas: 1, en otro fichero.
     #
     # No se declara 'store-type': esa propiedad ya no existe en Boot 4, que
     # modularizó la autoconfiguración de sesión (spring-boot-session-jdbc, ver

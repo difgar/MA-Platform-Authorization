@@ -88,7 +88,7 @@ Descubrimiento
 Flujo de la aplicación (Authorization Code + PKCE)
   GET  /oauth2/authorize                   pide el código (navegación, no fetch)
   POST /oauth2/token                       canjea código + code_verifier ← CORS
-  GET  /userinfo                           claims del usuario con el access token
+  GET  /userinfo                           'sub' con el access token (ver aviso abajo)
 
 Login federado con Google (lo usa el navegador, no la aplicación)
   GET  /oauth2/authorization/google        arranca el login
@@ -101,6 +101,16 @@ Management  (puerto de management, no expuesto al exterior)
   /actuator/health/{liveness,readiness}
   /actuator/info
 ```
+
+> **`/userinfo` devuelve sólo `sub`**, y no es un fallo de configuración. El
+> mapeador por defecto de Spring Authorization Server parte de los claims del ID
+> token y se queda con los que pide el *scope* del access token: `sub` siempre,
+> `email` con el scope `email`, `name`/`picture` con `profile`. El *scope* de
+> este servicio es el mínimo (`openid` y nada más), así que **el correo y el
+> nombre están en el ID token, no en `/userinfo`**. Es lo que sustituye al
+> `GET /v1/auth/me` de la fase 1, junto con el ID token. Lo fija
+> `FlujoCompletoIT.el_userinfo_devuelve_claims_con_un_token_emitido`, que llama
+> al endpoint con un token emitido de verdad.
 
 Lo que **ya no existe** (era el servicio de la fase 1, con emisión propia y
 cookies): `POST /v1/auth/google`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`,
@@ -256,6 +266,30 @@ Si el paso 3 no baja a cero, la limpieza no está corriendo y `SPRING_SESSION`
 crece sin límite. (La consulta es la misma en MySQL y en PostgreSQL: el esquema
 de esa tabla es común a los dos.)
 
+### `/oauth2/authorize` escribe en la base de datos sin autenticar
+
+Hay que saberlo para operar esto: **una petición anónima a `/oauth2/authorize`
+con `Accept: text/html` crea una fila en `SPRING_SESSION` y otra en
+`SPRING_SESSION_ATTRIBUTES`, con 12 h de retención**, sin que nadie se haya
+autenticado. No es un descuido: el usuario que aún no tiene sesión llega ahí
+primero, y la petición se guarda en el request cache para poder volver a ella
+después del login —guardar crea sesión, y desde que la sesión se persiste, eso
+es una escritura en la base de datos compartida de la plataforma—. Es lo que
+hace que el login funcione (`LoginIT` lo prueba), y el guardado está acotado a
+ese caso: quien no pide HTML recibe un 401 y no estrena sesión
+(`DescubrimientoIT.authorize_sin_sesion_y_sin_pedir_html_no_va_al_login`).
+
+Lo que hay que tener en cuenta:
+
+- **La única contención del crecimiento es el `cleanup-cron`** de Spring Session
+  (por defecto cada minuto; ver arriba). Nada más borra filas caducadas, y las
+  que se crean sin login caducan igual: a las 12 h.
+- **La limitación de tasa está fuera del alcance del spec y tiene que venir del
+  ingress.** Este servicio no la implementa: un bucle anónimo contra
+  `/oauth2/authorize` con `Accept: text/html` escribe una fila por petición
+  durante 12 h. Con el cron corriendo el estado se estabiliza, pero el pico lo
+  pone quien llame.
+
 ## Réplicas: hoy sólo una, y no es una decisión de capacidad
 
 **`replicas: 1` y el HPA `min = max = 1` son load-bearing. No los subas.**
@@ -276,6 +310,49 @@ Dos consecuencias que hay que tener escritas:
   Con dos réplicas y sin sesión pegajosa, una fracción de los canjes falla con
   `invalid_grant`, de forma intermitente, y el error no señala a ninguna parte.
   La sesión SSO sobrevive al salto de pod; el código de autorización no.
+
+### La otra mitad: ese almacén en memoria no purga nunca
+
+No es sólo que no se pueda escalar; es que el almacén **crece sin límite
+mientras el pod vive**. Verificado en el bytecode de
+`InMemoryOAuth2AuthorizationService` 7.1.1:
+
+- `initializedAuthorizations` (las autorizaciones a medias, las que tienen
+  código pero aún no token) es un `MaxSizeHashMap` **acotado a 100**. Ésa está
+  bien.
+- `authorizations` (las **completas**, las que llegaron a emitir token) es un
+  `ConcurrentHashMap` **sin evicción ninguna**.
+- `remove()` sólo lo llaman dos rutas de error
+  (`OAuth2AuthorizationCodeRequestAuthenticationProvider` y
+  `OAuth2AuthorizationConsentAuthenticationProvider`). **Nada purga por
+  caducidad, y el logout tampoco**: cerrar sesión mata la sesión SSO, no la
+  entrada del almacén.
+
+Cada canje deja ahí una `OAuth2Authorization` con la `Authentication` entera
+dentro —el principal de la sesión, con el ID token de Google y sus claims—, del
+orden de unos pocos KB, y no sale nunca. La aritmética es la que cada cual puede
+rehacer: sin renovación silenciosa (cliente público, sin refresh token), cada
+usuario vuelve a pasar por `/oauth2/authorize` **cada 2 h por aplicación**, así
+que son ~12 entradas por usuario y aplicación al día. Con unas decenas de
+usuarios y tres paneles, son miles de entradas de varios KB entre despliegue y
+despliegue.
+
+El pod tiene `limits.memory: 490Mi` y `-XX:MaxRAMPercentage=50` (unos 245 MB de
+heap), así que **esto no revienta hoy ni mañana: revienta semanas después de un
+despliegue**, con un OOM sin causa aparente, y `livenessProbe` reinicia el pod
+—lo que limpia el mapa y, con él, la evidencia—. Un despliegue frecuente lo
+esconde del todo.
+
+**Qué hacer mientras tanto**, porque el arreglo de verdad es el
+`OAuth2AuthorizationService` persistente de más abajo:
+
+- **Vigilar el heap.** `jvm.memory.used` no se sirve hoy: `exposure.include` es
+  `health,info`. Para mirarlo hay que añadir `metrics` a esa lista (no lo hace
+  público: la cadena de actuator sólo abre sin autenticar `health` e `info`), o
+  mirar la memoria del contenedor en GKE.
+- **Reiniciar el pod de vez en cuando** si pasan semanas sin desplegar: es la
+  única purga que existe. Con una sola réplica, ese reinicio corta los canjes en
+  vuelo (unos segundos), no las sesiones SSO, que están en la base de datos.
 
 **Qué haría falta para poder escalar:** declarar un
 `JdbcOAuth2AuthorizationService`. **Se intentó en la fase 2 y se abortó**, y
