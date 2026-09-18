@@ -60,7 +60,7 @@ SPAs internas». Con dos aplicaciones era razonable. Dejó de serlo por dos hech
 | 1 | **Authorization Code + PKCE**, un cliente OAuth por aplicación | Es la recomendación vigente para aplicaciones de navegador, y da a cada módulo una credencial que no sirve contra los demás |
 | 2 | **`scope` mínimo; los permisos siguen en el claim `permissions`** | `scope` es lo que el cliente pide y el usuario consiente; los permisos son lo que un administrador concede. Para aplicaciones internas de primera parte el consentimiento es teatro, y los consumidores ya saben leer ese claim |
 | 3 | **Sin prefijo de aplicación en las autoridades** | El `aud` ya fija la aplicación; `trafficflow.campanas.editar` duplicaría esa información en cada regla de `@PreAuthorize` |
-| 4 | **Sesión SSO con Spring Session sobre JDBC** | Reutiliza `ma_auth`, que ya está migrada y probada en dos motores. Los despliegues dejan de cerrar la sesión de todo el mundo, y subir réplicas deja de ser una decisión pendiente |
+| 4 | **Sesión SSO con Spring Session sobre JDBC** | Reutiliza `ma_auth`, que ya está migrada y probada en dos motores. Los despliegues dejan de cerrar la sesión de todo el mundo. ⚠️ **Corregido en ejecución:** esta celda decía además que «subir réplicas deja de ser una decisión pendiente», y era falso. Resolvía la mitad de la sesión y daba por resuelto el problema entero: el flujo de código de autorización necesita además un `OAuth2AuthorizationService` compartido, que este spec nunca mencionó (ver §6.2). Sigue pendiente |
 | 5 | **Logout global** | En un ordenador compartido, quien pulsa «cerrar sesión» espera quedar fuera. «Volver al home» es navegación, no un logout |
 | 6 | **`auth_app` sigue siendo el único registro de clientes** | El framework trae su propia tabla, pero usarla dejaría dos registros que deben concordar sin que nada los compare: la forma exacta del bug 8081/18080 que la fase 1 existió para arreglar |
 | 7 | **Un solo cliente de Google, el de auth** | La aplicación sale del `client_id` de la petición, no del `aud` del token de Google. Se registra un origen en Google Cloud, no uno por panel |
@@ -261,6 +261,15 @@ que es configurable por cliente.
 comodines), `AccessGrant`, `JwtKeys` y el JWKS —el framework consume un
 `JWKSource`, que es literalmente lo que ya expone—, las migraciones, la suite de
 doble motor, el despliegue y el toolchain.
+
+> ⚠️ **Corregido en ejecución (revisión de rama).** Esta sección designa
+> `/userinfo` como sustituto de `MeController`, y ni ella ni el plan advierten de
+> que ese endpoint **no funciona** sin `.oauth2ResourceServer(...)` en la cadena
+> del authorization server: su filtro se inserta *después* del
+> `AuthorizationFilter`, y su proveedor exige un principal de tipo token bearer.
+> Sin esa línea, `/userinfo` se anuncia en el documento de descubrimiento y
+> devuelve 401 siempre. Es del mismo género que los cinco hallazgos de §5 y
+> debería haber sido el sexto.
 
 **Se reemplaza:** `GoogleIdentityVerifier` y `GoogleProperties`,
 `auth_app.google_client_id`, `AuthController`, `CookieFactory`,
