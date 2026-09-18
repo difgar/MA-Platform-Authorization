@@ -2,6 +2,7 @@ package com.mobileamericas.authorization.domain;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -10,8 +11,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AccessGrantTest {
 
     private static final UUID APP_ID = UUID.randomUUID();
+    // redirectUris/postLogoutRedirectUris/accessTtlSeconds son irrelevantes
+    // aquí: esta clase prueba la expansión de permisos, no el registro OAuth.
     private static final App APP =
-            new App(APP_ID, "trafficflow", "https://tf.example", true);
+            new App(APP_ID, "trafficflow", "https://tf.example", true, List.of(), List.of(), null);
     private static final Set<String> CATALOGO = Set.of("campanas", "redes");
 
     private static User usuarioCon(Set<Permission> permisos) {
@@ -95,7 +98,7 @@ class AccessGrantTest {
         // y nadie vuelve a mirar si su app sigue activa-, así que la
         // comprobación tiene que vivir aquí, en el dominio, donde se construye
         // cada grant.
-        var appDesactivada = new App(APP_ID, "trafficflow", "https://tf.example", false);
+        var appDesactivada = new App(APP_ID, "trafficflow", "https://tf.example", false, List.of(), List.of(), null);
         var usuario = usuarioCon(Set.of(Permission.parse("*:*")));
 
         assertThat(AccessGrant.of(usuario, appDesactivada, CATALOGO).isEmpty()).isTrue();

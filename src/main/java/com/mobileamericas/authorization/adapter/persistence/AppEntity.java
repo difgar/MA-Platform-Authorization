@@ -23,6 +23,19 @@ class AppEntity {
     @Column(nullable = false)
     boolean active;
 
+    // Varias URI separadas por comas en una sola columna TEXT (ver DomainMapper,
+    // que las separa al convertir a dominio). Nullable: una app puede darse de
+    // alta sin ellas todavía, y RegisteredClientRepositoryAdapter decide qué
+    // hacer con eso (ver su javadoc).
+    @Column(name = "redirect_uris")
+    String redirectUris;
+
+    @Column(name = "post_logout_redirect_uris")
+    String postLogoutRedirectUris;
+
+    @Column(name = "access_ttl_seconds")
+    Long accessTtlSeconds;
+
     @Column(name = "created_at", nullable = false)
     Instant createdAt;
 

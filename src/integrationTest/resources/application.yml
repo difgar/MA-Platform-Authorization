@@ -1,27 +1,11 @@
 spring:
-  security:
-    oauth2:
-      authorizationserver:
-        # El authorization server exige un RegisteredClientRepository para
-        # arrancar: sin ningún cliente declarado no hay bean y el contexto
-        # falla con NoSuchBeanDefinitionException. Este cliente en memoria es
-        # andamiaje SOLO de pruebas, y solo hasta que auth_app sea el registro
-        # real de clientes. Público (client-authentication-methods: none) y con
-        # PKCE obligatorio, que es la forma que tendrá cada aplicación.
-        client:
-          pruebas:
-            require-proof-key: true
-            require-authorization-consent: false
-            registration:
-              client-id: cliente-de-pruebas
-              client-authentication-methods:
-                - none
-              authorization-grant-types:
-                - authorization_code
-              redirect-uris:
-                - https://localhost/callback
-              scopes:
-                - openid
+  # El authorization server exige un RegisteredClientRepository para arrancar:
+  # sin ningún cliente ni bean propio, el contexto falla con
+  # NoSuchBeanDefinitionException. Hasta la tarea 4 este bloque declaraba un
+  # cliente en memoria SOLO de pruebas para cubrir ese requisito; desde que
+  # RegisteredClientRepositoryAdapter existe (auth_app ES el registro real de
+  # clientes), ese andamiaje sobra: el bean propio ya satisface el arranque, y
+  # dejarlo aquí sería justo la clase de segundo registro que esta fase quita.
   jpa:
     # Flyway manda; 'validate' convierte la coherencia entre las entidades JPA
     # y el esquema real (en ambos motores) en algo que hace fallar el build,

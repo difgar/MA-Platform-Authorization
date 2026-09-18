@@ -5,6 +5,8 @@ import com.mobileamericas.authorization.domain.Permission;
 import com.mobileamericas.authorization.domain.Role;
 import com.mobileamericas.authorization.domain.User;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -14,7 +16,19 @@ final class DomainMapper {
     private DomainMapper() {}
 
     static App toDomain(AppEntity e) {
-        return new App(UUID.fromString(e.id), e.name, e.url, e.active);
+        return new App(UUID.fromString(e.id), e.name, e.url, e.active,
+                separarUris(e.redirectUris), separarUris(e.postLogoutRedirectUris), e.accessTtlSeconds);
+    }
+
+    /** auth_app guarda varias URI separadas por comas en una sola columna TEXT. */
+    private static List<String> separarUris(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(uri -> !uri.isEmpty())
+                .toList();
     }
 
     static User toDomain(UserEntity e) {

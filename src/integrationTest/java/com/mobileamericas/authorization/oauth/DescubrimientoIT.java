@@ -87,24 +87,32 @@ public abstract class DescubrimientoIT extends BaseIT {
      * no llama a authorizeHttpRequests, así que si SecurityConfig no declara
      * anyRequest().authenticated() en esa cadena nadie deniega esta petición:
      * comprobado quitando la línea, la respuesta pasa de 401 a
-     * 302 https://localhost/callback?error=invalid_request&error_description=
-     * OAuth%202.0%20Parameter%3A%20principal. Es decir, al usuario sin sesión
-     * lo devuelven a su aplicación con un error en vez de mandarlo a un login.
-     * Esta prueba distingue exactamente esos dos resultados.
+     * 302 https://admin.mobile-americas.com/callback?error=invalid_request&
+     * error_description=OAuth%202.0%20Parameter%3A%20principal. Es decir, al
+     * usuario sin sesión lo devuelven a su aplicación con un error en vez de
+     * mandarlo a un login. Esta prueba distingue exactamente esos dos
+     * resultados.
      *
      * La petición lleva code_challenge porque el cliente exige PKCE: sin él el
      * endpoint rechaza por 'code_challenge' ANTES de mirar quién pide, y la
      * prueba pasaría por el motivo equivocado (verificado también).
      *
+     * client_id=admin, no un cliente de andamiaje: desde la tarea 4,
+     * RegisteredClientRepositoryAdapter (sobre auth_app) es el único registro
+     * de clientes, así que 'admin' es el cliente real y activo que la app del
+     * mismo nombre representa. redirect_uri es la que esa fila trae en
+     * auth_app.redirect_uris (ver V2__datos_iniciales.sql).
+     *
      * Cliente HTTP propio, no TestRestTemplate, por lo mismo que en
      * ActuatorSecurityIT: TestRestTemplate sigue los redirects, así que una
-     * regresión aquí intentaría conectarse de verdad a https://localhost y
-     * fallaría con un error de E/S en vez de con una aserción legible.
+     * regresión aquí intentaría conectarse de verdad a
+     * https://admin.mobile-americas.com y fallaría con un error de E/S en vez
+     * de con una aserción legible.
      */
     @Test
     void authorize_sin_sesion_no_emite_nada() throws Exception {
-        var r = get("/oauth2/authorize?response_type=code&client_id=cliente-de-pruebas"
-                + "&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback&scope=openid"
+        var r = get("/oauth2/authorize?response_type=code&client_id=admin"
+                + "&redirect_uri=https%3A%2F%2Fadmin.mobile-americas.com%2Fcallback&scope=openid"
                 + "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
                 + "&code_challenge_method=S256");
 
