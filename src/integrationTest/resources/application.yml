@@ -12,6 +12,27 @@ spring:
     # no solo en algo cierto en producción por casualidad.
     hibernate.ddl-auto: validate
     open-in-view: false
+  # Repetido desde application.yml por el mismo motivo que 'flyway.locations'
+  # (ver el comentario de abajo): este fichero REEMPLAZA al principal, no se
+  # fusiona con él. Sin estas líneas la sesión se quedaría en memoria de Tomcat
+  # y SPRING_SESSION seguiría vacía, que es justo lo que LoginIT verifica.
+  session:
+    timeout: 12h
+    jdbc.initialize-schema: never   # las tablas las crea Flyway
+  security.oauth2.client.registration.google:
+    # SOLO PARA TESTS, y sin ningún valor que haya que hacer coincidir con
+    # nada: el proveedor simulado no valida el secreto, y la audiencia del ID
+    # token es el client_id que viajó en la petición de autorización.
+    client-id: cliente-de-pruebas
+    client-secret: secreto-de-pruebas
+    scope: openid,email,profile
+    # El proveedor (provider.google.issuer-uri) NO se declara aquí: se resuelve
+    # al construir el contexto descargando el documento de descubrimiento, y el
+    # puerto del simulado no se conoce hasta arrancarlo. Lo registra
+    # BaseOauthIT con @DynamicPropertySource. Las pruebas que no extienden esa
+    # clase base se quedan con los endpoints reales de Google
+    # (CommonOAuth2Provider), que nunca llegan a llamarse: ninguna sigue la
+    # redirección al proveedor.
   flyway:
     enabled: true
     # Este fichero de test REEMPLAZA classpath:application.yml en vez de

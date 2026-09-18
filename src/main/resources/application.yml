@@ -21,6 +21,31 @@ spring:
   jpa:
     hibernate.ddl-auto: validate     # Flyway manda; Hibernate sólo comprueba
     open-in-view: false
+  session:
+    # La sesión SSO vive en la base de datos, no en memoria del pod: el
+    # Deployment corre varias réplicas sin sesión pegajosa, y en memoria cada
+    # pod obligaría a pasar otra vez por Google.
+    #
+    # No se declara 'store-type': esa propiedad ya no existe en Boot 4, que
+    # modularizó la autoconfiguración de sesión (spring-boot-session-jdbc, ver
+    # build.gradle). Lo que hay en el classpath decide el almacén, así que
+    # 'store-type: jdbc' sería una línea que no configura nada.
+    timeout: 12h                     # inactividad, deslizante
+    jdbc:
+      # SPRING_SESSION y SPRING_SESSION_ATTRIBUTES las crea Flyway (V3 y V4).
+      # El valor por defecto ('embedded') no las crearía contra MySQL ni
+      # PostgreSQL, pero dejarlo implícito haría que un cambio de motor a uno
+      # embebido intentara crearlas por detrás de Flyway y chocara con
+      # hibernate.ddl-auto=validate.
+      initialize-schema: never
+  security.oauth2.client.registration.google:
+    client-id: ${GOOGLE_CLIENT_ID}
+    client-secret: ${GOOGLE_CLIENT_SECRET}
+    # El mínimo que hace falta: 'openid' para el flujo, 'email' porque el email
+    # es la clave hacia auth_user y 'profile' para el nombre que se muestra.
+    # No se declara el proveedor: con el id de registro 'google', Boot usa los
+    # endpoints reales de Google (CommonOAuth2Provider).
+    scope: openid,email,profile
   flyway:
     enabled: true
     # La segunda ubicación existe por una sola tabla; ver la cabecera de V3/V4.

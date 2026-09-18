@@ -38,6 +38,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-authorization-server'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springframework.session:spring-session-jdbc'
+    // Y su autoconfiguración, que en Boot 4 vive en artefactos aparte (igual
+    // que la de Flyway, más abajo): sin esto no hay SessionRepository JDBC ni
+    // SessionRepositoryFilter, así que la sesión se queda en memoria de Tomcat,
+    // SPRING_SESSION nunca se escribe y 'spring.session.*' no configura nada.
+    implementation 'org.springframework.boot:spring-boot-session-jdbc'
     implementation 'org.springframework.security:spring-security-oauth2-jose'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

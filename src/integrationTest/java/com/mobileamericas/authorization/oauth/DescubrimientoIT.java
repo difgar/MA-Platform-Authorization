@@ -81,17 +81,26 @@ public abstract class DescubrimientoIT extends BaseIT {
 
     /**
      * /oauth2/authorize está dentro del matcher del authorization server, pero
-     * exige un usuario autenticado: sin sesión no se emite ningún código.
+     * exige un usuario autenticado: sin sesión no se emite ningún código, y al
+     * usuario se le manda a autenticarse.
      *
-     * No prueba el framework, prueba una línea NUESTRA. init() del configurer
-     * no llama a authorizeHttpRequests, así que si SecurityConfig no declara
-     * anyRequest().authenticated() en esa cadena nadie deniega esta petición:
-     * comprobado quitando la línea, la respuesta pasa de 401 a
-     * 302 https://admin.mobile-americas.com/callback?error=invalid_request&
-     * error_description=OAuth%202.0%20Parameter%3A%20principal. Es decir, al
-     * usuario sin sesión lo devuelven a su aplicación con un error en vez de
-     * mandarlo a un login. Esta prueba distingue exactamente esos dos
-     * resultados.
+     * No prueba el framework, prueba dos líneas NUESTRAS, y por eso lo que se
+     * afirma es el Location y no sólo el código de estado (los dos resultados
+     * posibles son 302):
+     *
+     * - init() del configurer no llama a authorizeHttpRequests, así que sin el
+     *   anyRequest().authenticated() de esa cadena nadie deniega esta
+     *   petición: comprobado quitando la línea, la respuesta es
+     *   302 https://admin.mobile-americas.com/callback?error=invalid_request&
+     *   error_description=OAuth%202.0%20Parameter%3A%20principal. Es decir, al
+     *   usuario sin sesión lo devuelven a su aplicación con un error que
+     *   parece culpa suya.
+     * - Y sin el exceptionHandling con LoginUrlAuthenticationEntryPoint que
+     *   añadió la tarea 5, la respuesta es 401 con WWW-Authenticate: Bearer
+     *   -como si faltara un token-, porque el entry point que registra el
+     *   propio configurer es un HttpStatusEntryPoint(UNAUTHORIZED).
+     *
+     * Esta prueba distingue esos tres resultados.
      *
      * La petición lleva code_challenge porque el cliente exige PKCE: sin él el
      * endpoint rechaza por 'code_challenge' ANTES de mirar quién pide, y la
@@ -118,11 +127,12 @@ public abstract class DescubrimientoIT extends BaseIT {
                 + "&code_challenge_method=S256");
 
         assertThat(r.statusCode())
-                .as("sin anyRequest().authenticated() esto sería un 302 de vuelta a la aplicación")
-                .isEqualTo(401);
-        assertThat(r.headers().firstValue("Location"))
-                .as("nada debe volver a la aplicación mientras no haya sesión")
-                .isEmpty();
+                .as("sin el entry point del login esto sería un 401 con WWW-Authenticate: Bearer")
+                .isEqualTo(302);
+        assertThat(r.headers().firstValue("Location").orElseThrow())
+                .as("al usuario sin sesión se le manda a autenticarse, no de vuelta a su aplicación")
+                .endsWith("/oauth2/authorization/google")
+                .doesNotContain("admin.mobile-americas.com");
     }
 
     /**
@@ -137,19 +147,27 @@ public abstract class DescubrimientoIT extends BaseIT {
      * con y sin la denegación. Lo que discrimina es EXIGIR un rechazo de
      * seguridad: con permitAll saldría 404 y esta aserción fallaría.
      *
-     * 401 o 403, no un código fijo: cuál de los dos sale lo decide el
-     * AuthenticationEntryPoint de esa cadena, que hoy no tiene ningún mecanismo
-     * configurado (403) y en la tarea 5 pasará a redirigir al login con Google.
-     * Lo que esta prueba vigila es que no se cuele nada sin autenticar, no cuál
-     * de los rechazos toca en cada momento del rediseño.
+     * Desde la tarea 5 ese rechazo es la redirección al login (302), no un 401
+     * ni un 403: esta cadena ya tiene un mecanismo de autenticación
+     * (oauth2Login) y, con un solo proveedor registrado, su entry point manda
+     * directo a Google sin pantalla de selección.
+     *
+     * Cliente propio y no TestRestTemplate, a diferencia de la versión
+     * anterior de esta prueba: TestRestTemplate sigue las redirecciones, y
+     * seguirlas desde aquí acaba llamando de verdad a accounts.google.com
+     * -este contexto no registra el proveedor simulado- y devolviendo 200,
+     * con lo que la prueba fallaba por una razón que no tiene nada que ver con
+     * lo que comprueba.
      */
     @Test
-    void una_ruta_fuera_del_authorization_server_exige_autenticacion() {
-        var r = http.getForEntity("/v1/lo-que-sea", String.class);
+    void una_ruta_fuera_del_authorization_server_exige_autenticacion() throws Exception {
+        var r = get("/v1/lo-que-sea");
 
-        assertThat(r.getStatusCode())
+        assertThat(r.statusCode())
                 .as("un 404 sería lo que devolvería un permitAll: no distingue")
-                .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+                .isEqualTo(302);
+        assertThat(r.headers().firstValue("Location").orElseThrow())
+                .endsWith("/oauth2/authorization/google");
     }
 
     private HttpResponse<String> get(String path) throws Exception {

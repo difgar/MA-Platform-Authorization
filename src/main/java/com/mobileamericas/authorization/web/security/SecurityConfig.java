@@ -1,5 +1,6 @@
 package com.mobileamericas.authorization.web.security;
 
+import com.mobileamericas.authorization.adapter.google.UsuarioOidcService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.actuate.info.InfoEndpoint;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -8,12 +9,15 @@ import org.springframework.boot.security.autoconfigure.actuate.web.servlet.Endpo
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -87,11 +91,13 @@ class SecurityConfig {
      *
      * Ese 401 lo pone el HttpStatusEntryPoint(UNAUTHORIZED) que el propio
      * configurer registra; al ser el único entry point mapeado, Spring
-     * Security lo usa para toda esta cadena. El redirect al login con Google
-     * no sale de aquí ni de la cadena de cierre -las dos son disjuntas por
-     * securityMatcher, así que la de cierre nunca ve /oauth2/authorize-: llega
-     * en la tarea 5, con un exceptionHandling(LoginUrlAuthenticationEntryPoint)
-     * sobre esta misma cadena. Hasta entonces, 401 es lo correcto y esperado.
+     * Security lo usaría para toda esta cadena. Y con eso solo, el usuario sin
+     * sesión recibe 401 con WWW-Authenticate: Bearer -como si le faltara un
+     * token- en vez de ir a autenticarse, porque el redirect al login no puede
+     * venir de la cadena de cierre: las dos son disjuntas por securityMatcher,
+     * así que la de cierre nunca ve /oauth2/authorize. De ahí el
+     * exceptionHandling de abajo, que es lo que convierte ese 401 en un viaje
+     * a Google.
      *
      * CSRF ignorado SOLO para este matcher (no deshabilitado en general): el
      * canje del código es un POST de servidor a servidor -o de la SPA con
@@ -116,20 +122,54 @@ class SecurityConfig {
                 // origen: sin CORS el navegador ni siquiera envía la petición.
                 .cors(c -> c.configurationSource(cors))
                 .csrf(csrf -> csrf.ignoringRequestMatchers(endpoints))
+                // Esta cadena NO autentica: depende de la sesión que establezca
+                // la de cierre. Lo único que hace aquí es, cuando no hay
+                // sesión, mandar al usuario a por ella en lugar de responder
+                // 401 con WWW-Authenticate: Bearer.
+                //
+                // Acotado a text/html porque el único endpoint de esta cadena
+                // al que se llega sin sesión y navegando es /oauth2/authorize;
+                // los demás los llama código, que no sabría qué hacer con una
+                // redirección a una pantalla de login.
+                //
+                // OJO con el alcance real de ese matcher, que es más ancho de
+                // lo que parece: un Accept ausente se resuelve como '*\/*', y
+                // MediaTypeRequestMatcher lo considera compatible con
+                // text/html (no declara ignoredMediaTypes), así que un cliente
+                // que no manda Accept TAMBIÉN acaba en el login. Ver
+                // DescubrimientoIT.authorize_sin_sesion_no_emite_nada, que es
+                // exactamente ese caso.
+                //
+                // La URL es la del filtro de oauth2Login de la cadena de
+                // cierre, no una pantalla propia: con un solo proveedor
+                // registrado Spring redirige directo a Google sin pantalla de
+                // selección, y auth no sirve HTML.
+                .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
+                        new LoginUrlAuthenticationEntryPoint("/oauth2/authorization/google"),
+                        new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 .build();
     }
 
     /**
      * Cierre por defecto: todo lo que no sea actuator ni authorization server
-     * exige autenticación.
+     * exige autenticación, y es ESTA cadena la que sabe autenticar.
      *
-     * Hoy no hay ningún mecanismo con el que autenticarse, y es lo esperado en
-     * este punto del rediseño: la emisión propia de la fase 1 ya no está y el
-     * login con Google (oauth2Login) llega después, ampliando esta misma
-     * cadena. Mientras tanto, denegar es la respuesta correcta.
+     * El mecanismo es el login federado: nada de contraseñas propias, la
+     * identidad la da Google y quién puede entrar lo decide
+     * UsuarioOidcService. Como sólo hay un proveedor registrado, Spring no
+     * genera pantalla de selección y redirige directo a él -auth no sirve
+     * HTML-, y esa misma URL (/oauth2/authorization/google) es la que usa el
+     * entry point de la cadena del authorization server.
+     *
+     * No se declaran rutas de actuator aquí: la cadena @Order(0) ya cubre
+     * health e info, y lo hace por tipo de endpoint en vez de por ruta, así
+     * que sobrevive a un cambio de management.endpoints.web.base-path.
      *
      * Ya no se declara STATELESS: el flujo de código de autorización necesita
-     * una sesión de servidor entre el login y /oauth2/authorize.
+     * una sesión de servidor entre el login y /oauth2/authorize. Esa sesión se
+     * guarda en SPRING_SESSION (spring-session-jdbc, ver application.yml) y no
+     * en memoria del pod: con varias réplicas y sin sesión pegajosa, una
+     * sesión en memoria obliga a pasar otra vez por Google en cada pod.
      */
     @Bean
     @Order(2)
@@ -139,13 +179,21 @@ class SecurityConfig {
             // CorsConfigurationSource (para resolver @CrossOrigin por ruta), así
             // que sin este @Qualifier la inyección es ambigua entre ese bean y
             // el nuestro: NoUniqueBeanDefinitionException al arrancar.
-            @Qualifier("corsConfigurationSource") CorsConfigurationSource cors)
+            @Qualifier("corsConfigurationSource") CorsConfigurationSource cors,
+            UsuarioOidcService usuarios)
             throws Exception {
         return http
                 .cors(c -> c.configurationSource(cors))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
+                .oauth2Login(o -> o
+                        .userInfoEndpoint(u -> u.oidcUserService(usuarios))
+                        // Sin este handler el fallo se redirige a /login?error,
+                        // que exige autenticación y vuelve a mandar a Google:
+                        // un bucle en vez de un motivo. Ver
+                        // RespuestaDeLoginFallido.
+                        .failureHandler(new RespuestaDeLoginFallido()))
                 .build();
     }
 

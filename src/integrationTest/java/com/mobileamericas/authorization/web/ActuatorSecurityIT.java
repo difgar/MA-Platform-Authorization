@@ -69,17 +69,23 @@ class ActuatorSecurityIT {
         // dar 200: el matcher de actuatorFilterChain() no lo cubre, así que
         // cae en el anyRequest().authenticated() de filterChain().
         //
-        // 401 o 403, no un código concreto: cuál de los dos sale lo decide el
-        // AuthenticationEntryPoint de la cadena de cierre, y ese depende del
-        // mecanismo de autenticación que tenga configurado. Con la emisión
-        // propia de la fase 1 era el del resource server (401 con
-        // WWW-Authenticate: Bearer); retirada esa, hoy no hay ningún mecanismo
-        // y Spring Security usa el suyo por defecto (403). Lo que esta prueba
-        // vigila es que /actuator/env no quede abierto, no cuál de los dos
-        // rechazos toca en cada momento del rediseño.
+        // El rechazo lo pone el AuthenticationEntryPoint de la cadena de
+        // cierre, y ése depende del mecanismo de autenticación que tenga
+        // configurado: con la emisión propia de la fase 1 era el del resource
+        // server (401 con WWW-Authenticate: Bearer); sin ningún mecanismo fue
+        // un rato el 403 por defecto de Spring Security; y desde que la cadena
+        // de cierre tiene oauth2Login con un solo proveedor, es la redirección
+        // al login. Lo que esta prueba vigila no es cuál de los tres toca,
+        // sino que /actuator/env no quede abierto: con un permitAll aquí
+        // saldría un 200 con el entorno del proceso dentro.
         var respuesta = get("/actuator/env");
 
-        assertThat(respuesta.statusCode()).isIn(401, 403);
+        assertThat(respuesta.statusCode()).isEqualTo(302);
+        assertThat(respuesta.headers().firstValue("Location").orElseThrow())
+                .endsWith("/oauth2/authorization/google");
+        assertThat(respuesta.body())
+                .as("nada del entorno del proceso debe salir por aquí")
+                .doesNotContain("propertySources");
     }
 
     @Test
