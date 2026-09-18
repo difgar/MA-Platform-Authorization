@@ -17,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * El proveedor simulado es infraestructura de las cuatro tareas siguientes: si
@@ -108,7 +110,9 @@ class GoogleSimuladoTest {
         assertThat(claims.getIssuer()).isEqualTo(google.issuerUri());
         assertThat(claims.getSubject()).isNotBlank();
         assertThat(claims.getAudience()).containsExactly(GoogleSimulado.AUDIENCIA_POR_DEFECTO);
-        assertThat(claims.getIssueTime()).isNotNull();
+        assertThat(claims.getIssueTime().toInstant())
+                .as("un iat fijo, del pasado o del futuro, pasaría un isNotNull: lo que importa es que esté vigente")
+                .isCloseTo(Instant.now(), within(1, ChronoUnit.MINUTES));
         assertThat(claims.getExpirationTime().toInstant()).isAfter(Instant.now());
         assertThat(token.getHeader().getKeyID())
                 .as("el kid de la firma tiene que ser el que publica el JWKS")
@@ -182,6 +186,37 @@ class GoogleSimuladoTest {
         var reintento = canjear(codigo);
         assertThat(reintento.statusCode()).isEqualTo(400);
         assertThat(reintento.body()).contains("invalid_grant");
+    }
+
+    /**
+     * Sin guarda, esto no es un 400: porCodigo es un ConcurrentHashMap y no
+     * admite null como clave, así que el manejador revienta y el cliente ve una
+     * conexión cortada. Google devuelve invalid_request, y un simulado que se
+     * porte distinto manda a depurar el SecurityConfig de otra tarea.
+     */
+    @Test
+    void un_canje_sin_code_responde_400_y_no_corta_la_conexion() throws Exception {
+        var respuesta = canjearCuerpo("grant_type=authorization_code");
+
+        assertThat(respuesta.statusCode()).isEqualTo(400);
+        assertThat(mapa(respuesta.body())).containsEntry("error", "invalid_request");
+    }
+
+    /**
+     * El {@code scope} es opcional en la petición de autorización, y el de la
+     * respuesta del canje sale de ahí: si falta, Google omite el campo. Mandarlo
+     * a {@code null} sería otra diferencia sutil en un camino que nadie mira.
+     */
+    @Test
+    void sin_scope_en_la_autorizacion_la_respuesta_del_canje_omite_el_campo() throws Exception {
+        var sinScope = google.issuerUri() + "/oauth2/authorize?response_type=code"
+                + "&client_id=" + CLIENTE
+                + "&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, UTF_8);
+
+        var callback = google.callbackPara(sinScope, "alguien@ejemplo.com", true);
+        var respuesta = mapa(cuerpo(canjear(parametro(callback, "code"))));
+
+        assertThat(respuesta).doesNotContainKey("scope").containsKey("id_token");
     }
 
     @Test
@@ -284,9 +319,12 @@ class GoogleSimuladoTest {
      * client_id de la petición de autorización.
      */
     private HttpResponse<String> canjear(String codigo) throws Exception {
+        return canjearCuerpo("grant_type=authorization_code&code=" + codigo
+                + "&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, UTF_8));
+    }
+
+    private HttpResponse<String> canjearCuerpo(String cuerpo) throws Exception {
         var basic = Base64.getEncoder().encodeToString((CLIENTE + ":" + SECRETO).getBytes(UTF_8));
-        var cuerpo = "grant_type=authorization_code&code=" + codigo
-                + "&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, UTF_8);
         return cliente.send(HttpRequest.newBuilder(URI.create(google.issuerUri() + "/oauth2/token"))
                         .header("Content-Type", "application/x-www-form-urlencoded")
                         .header("Authorization", "Basic " + basic)

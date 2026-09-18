@@ -275,7 +275,19 @@ public final class GoogleSimulado {
      */
     private void token(HttpExchange intercambio) throws IOException {
         var formulario = parametros(new String(intercambio.getRequestBody().readAllBytes(), UTF_8));
-        var sesion = porCodigo.remove(formulario.get("code"));   // de un solo uso
+        var codigo = formulario.get("code");
+        // La guarda no es ceremonia: porCodigo es un ConcurrentHashMap y no
+        // admite null como clave, así que sin ella una petición sin 'code'
+        // revienta el manejador y el cliente ve una conexión cortada en vez del
+        // 400 que daría Google.
+        if (codigo == null) {
+            responder(intercambio, 400, Map.of(
+                    "error", "invalid_request",
+                    "error_description", "la petición de canje no trae el parámetro code"));
+            return;
+        }
+
+        var sesion = porCodigo.remove(codigo);   // de un solo uso
         if (sesion == null) {
             responder(intercambio, 400, Map.of(
                     "error", "invalid_grant",
@@ -290,7 +302,11 @@ public final class GoogleSimulado {
         respuesta.put("access_token", accessToken);
         respuesta.put("token_type", "Bearer");
         respuesta.put("expires_in", VIGENCIA.toSeconds());
-        respuesta.put("scope", sesion.scope());   // el que pidió el cliente, no uno inventado
+        if (sesion.scope() != null) {
+            // El que pidió el cliente, no uno inventado. Y ausente si no pidió
+            // ninguno: Google omite el campo, no lo manda a null.
+            respuesta.put("scope", sesion.scope());
+        }
         respuesta.put("id_token", firmar(sesion));
         responder(intercambio, 200, respuesta);
     }
