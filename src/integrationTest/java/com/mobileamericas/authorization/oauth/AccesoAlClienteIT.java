@@ -3,6 +3,8 @@ package com.mobileamericas.authorization.oauth;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -68,7 +70,92 @@ public abstract class AccesoAlClienteIT extends BaseOauthIT {
 
         var r = pedirAutorizacion(cookie, "admin");
 
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(r.getHeaders().getLocation()).isNotNull();
-        assertThat(r.getHeaders().getLocation().toString()).contains("code=");
+        assertThat(r.getHeaders().getLocation().toString())
+                .contains("code=")
+                .doesNotContain("error=");
+    }
+
+    /**
+     * Fila propia con su propio email, igual que
+     * LoginIT.insertarUsuarioInactivo: así ninguno de los dos tests de abajo
+     * -uno desactiva, el otro borra- pisa al otro ni depende del orden en que
+     * JUnit los ejecute. El rol es admin@admin (comodín *:*), para que
+     * AccessGrant.of tenga algo que conceder si no fuera por la baja o el
+     * borrado: sin un rol real, el rechazo no probaría lo que dice probar.
+     */
+    private void insertarUsuarioConRolAdminEnAdmin(String email) {
+        var id = UUID.randomUUID().toString();
+        jdbc.sql("""
+                        INSERT INTO auth_user (id, email, full_name, active, created_at, updated_at)
+                        VALUES (:id, :email, NULL, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """)
+                .param("id", id)
+                .param("email", email)
+                .update();
+        jdbc.sql("""
+                        INSERT INTO auth_user_role (user_id, role_id)
+                        VALUES (:userId, 'c0000000-0000-4000-8000-000000000001')
+                        """)
+                .param("userId", id)
+                .update();
+    }
+
+    /**
+     * Dado de baja DESPUÉS de iniciar sesión, no antes: la tarea 5 sólo
+     * rechaza en el LOGIN, así que una sesión ya establecida sigue viva tras
+     * el UPDATE. Es justo el camino que AccessGrant.of ya cubre -un usuario
+     * inactivo concede un grant vacío, active() se mira antes que los roles-,
+     * y este validador delega en él sin más: la misma excepción
+     * access_denied que "sin roles", no un token con autoridades para
+     * alguien dado de baja.
+     */
+    @Test
+    void un_usuario_dado_de_baja_con_sesion_viva_devuelve_access_denied() {
+        insertarUsuarioConRolAdminEnAdmin("baja@pendiente.local");
+        var cookie = iniciarSesionCon("baja@pendiente.local");
+        jdbc.sql("UPDATE auth_user SET active = FALSE WHERE email = :email")
+                .param("email", "baja@pendiente.local")
+                .update();
+
+        var r = pedirAutorizacion(cookie, "admin");
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(r.getHeaders().getLocation()).isNotNull();
+        assertThat(r.getHeaders().getLocation().toString())
+                .startsWith("https://admin.mobile-americas.com/callback")
+                .contains("error=access_denied");
+    }
+
+    /**
+     * El hallazgo de la ronda 1: el .orElseThrow() literal del brief
+     * convertía un Optional vacío en un 500 crudo -la pantalla que esta tarea
+     * existe para no ensuciar-, alcanzable en producción con un usuario
+     * BORRADO (no sólo desactivado) mientras su sesión sigue viva. Se borra
+     * la fila entera -primero sus roles, por la FK-, no un UPDATE: eso es lo
+     * que deja a usuarios.findByEmail(...) devolviendo Optional.empty(), la
+     * rama que trata la ausencia como el mismo access_denied que la falta de
+     * roles, no como un error de servidor.
+     */
+    @Test
+    void un_usuario_borrado_con_sesion_viva_devuelve_access_denied_no_500() {
+        insertarUsuarioConRolAdminEnAdmin("borrado@pendiente.local");
+        var cookie = iniciarSesionCon("borrado@pendiente.local");
+        jdbc.sql("DELETE FROM auth_user_role WHERE user_id = "
+                        + "(SELECT id FROM auth_user WHERE email = :email)")
+                .param("email", "borrado@pendiente.local")
+                .update();
+        jdbc.sql("DELETE FROM auth_user WHERE email = :email")
+                .param("email", "borrado@pendiente.local")
+                .update();
+
+        var r = pedirAutorizacion(cookie, "admin");
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(r.getHeaders().getLocation()).isNotNull();
+        assertThat(r.getHeaders().getLocation().toString())
+                .startsWith("https://admin.mobile-americas.com/callback")
+                .contains("error=access_denied");
     }
 }

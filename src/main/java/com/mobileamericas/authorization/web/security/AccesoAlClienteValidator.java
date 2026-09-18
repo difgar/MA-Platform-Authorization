@@ -22,15 +22,24 @@ import java.util.function.Consumer;
  *
  * Sustituye al validador por defecto del framework en vez de sumarse a él: se
  * DELEGA en él primero (pordefecto.accept(ctx)), que es quien valida
- * redirect_uri, code_challenge, scope y el resto de la forma de la petición.
- * Sin esa delegación, registrar esta clase en su lugar (ver SecurityConfig)
- * dejaría de comprobar todo lo que el validador de serie comprobaba.
+ * redirect_uri y scope. Sin esa delegación, registrar esta clase en su lugar
+ * (ver SecurityConfig) dejaría de comprobar eso. PKCE (code_challenge) y
+ * grant_type NO pasan por aquí: los aplica el framework alrededor del hueco
+ * que este validador sustituye, antes y después de invocarlo -delegar de más
+ * no haría daño, pero no es lo que ocurre-.
  *
  * El segundo argumento de la excepción es ctx.getAuthentication() a
  * propósito, no null: sin él el usuario recibe un 400 crudo en la pantalla de
  * auth; con él, AuthenticationEntryPoint sabe a qué authorization request
  * responder y el usuario vuelve a su aplicación con
  * error=access_denied en la URL de redirección.
+ *
+ * Por eso un usuario o una app que ya no existen (auth_user borrado, auth_app
+ * renombrada o eliminada mientras su registro de cliente sigue sirviéndose)
+ * se tratan como el mismo rechazo, no como un 500: un Optional vacío aquí es
+ * exactamente el escenario que esta clase existe para no dejar pasar, y un
+ * .orElseThrow() sin más volvería a dar el 400/500 crudo que el resto de la
+ * clase evita.
  */
 class AccesoAlClienteValidator implements Consumer<OAuth2AuthorizationCodeRequestAuthenticationContext> {
 
@@ -72,10 +81,18 @@ class AccesoAlClienteValidator implements Consumer<OAuth2AuthorizationCodeReques
         }
 
         var clientId = ctx.getRegisteredClient().getClientId();
-        var app = apps.findByName(clientId).orElseThrow();
-        var usuario = usuarios.findByEmail(autenticacion.getName()).orElseThrow();
+        var app = apps.findByName(clientId);
+        var usuario = usuarios.findByEmail(autenticacion.getName());
 
-        if (AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id())).isEmpty()) {
+        // .orElseThrow() aquí sería el mismo 400/500 crudo que esta clase
+        // existe para evitar, sólo que por otra puerta: un usuario borrado de
+        // auth_user (no sólo desactivado) con sesión todavía viva, o una app
+        // renombrada o eliminada mientras su registro de cliente sigue
+        // sirviéndose, son Optional vacíos alcanzables en producción, no
+        // casos teóricos. Se tratan como el mismo access_denied que la falta
+        // de roles, no como un error de servidor.
+        if (app.isEmpty() || usuario.isEmpty()
+                || AccessGrant.of(usuario.get(), app.get(), apps.resourceCatalogue(app.get().id())).isEmpty()) {
             throw new OAuth2AuthorizationCodeRequestAuthenticationException(
                     new OAuth2Error(OAuth2ErrorCodes.ACCESS_DENIED,
                             "El usuario no tiene roles ni permisos en '" + clientId + "'.", null),

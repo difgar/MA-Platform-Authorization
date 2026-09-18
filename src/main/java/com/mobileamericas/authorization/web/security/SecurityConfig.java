@@ -158,9 +158,11 @@ class SecurityConfig {
                     // Sustituye al validador por defecto del proveedor, no se
                     // suma a él: AccesoAlClienteValidator delega en ese
                     // validador de serie como primer paso, así que la
-                    // validación de redirect_uri (y el resto: code_challenge,
-                    // scope...) no se pierde, sólo se amplía con el rechazo
-                    // por falta de roles.
+                    // validación de redirect_uri y scope no se pierde, sólo
+                    // se amplía con el rechazo por falta de roles. PKCE
+                    // (code_challenge) y grant_type no dependen de esta
+                    // sustitución: el framework los aplica alrededor, fuera
+                    // del hueco que ocupa este validador.
                     cfg.authorizationEndpoint(a -> a.authenticationProviders(ps -> ps.forEach(p -> {
                         if (p instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider prov) {
                             prov.setAuthenticationValidator(validador);
@@ -211,8 +213,9 @@ class SecurityConfig {
      * token con cero autoridades-, que es peor que un rechazo: la aplicación
      * cree que el usuario ha entrado y no puede hacer nada. Ver
      * AccesoAlClienteValidator, que delega primero en el validador de serie
-     * (redirect_uri, code_challenge, scope...) antes de mirar los roles, y
-     * que se enchufa más arriba dentro de authorizationServerFilterChain.
+     * (redirect_uri, scope) antes de mirar los roles -PKCE y grant_type los
+     * aplica el framework por fuera, no esta delegación-, y que se enchufa
+     * más arriba dentro de authorizationServerFilterChain.
      */
     @Bean
     AccesoAlClienteValidator accesoAlClienteValidator(UserRepository usuarios, AppRepository apps) {
