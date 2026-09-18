@@ -1,6 +1,8 @@
 package com.mobileamericas.authorization.web.security;
 
 import com.mobileamericas.authorization.adapter.google.UsuarioOidcService;
+import com.mobileamericas.authorization.application.port.AppRepository;
+import com.mobileamericas.authorization.application.port.UserRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.actuate.info.InfoEndpoint;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -15,6 +17,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
@@ -142,14 +145,28 @@ class SecurityConfig {
     SecurityFilterChain authorizationServerFilterChain(
             HttpSecurity http,
             // Mismo @Qualifier y mismo motivo que en la cadena de cierre.
-            @Qualifier("corsConfigurationSource") CorsConfigurationSource cors)
+            @Qualifier("corsConfigurationSource") CorsConfigurationSource cors,
+            AccesoAlClienteValidator validador)
             throws Exception {
         var authorizationServer = new OAuth2AuthorizationServerConfigurer();
         var endpoints = authorizationServer.getEndpointsMatcher();
 
         return http
                 .securityMatcher(endpoints)
-                .with(authorizationServer, cfg -> cfg.oidc(Customizer.withDefaults()))
+                .with(authorizationServer, cfg -> {
+                    cfg.oidc(Customizer.withDefaults());
+                    // Sustituye al validador por defecto del proveedor, no se
+                    // suma a él: AccesoAlClienteValidator delega en ese
+                    // validador de serie como primer paso, así que la
+                    // validación de redirect_uri (y el resto: code_challenge,
+                    // scope...) no se pierde, sólo se amplía con el rechazo
+                    // por falta de roles.
+                    cfg.authorizationEndpoint(a -> a.authenticationProviders(ps -> ps.forEach(p -> {
+                        if (p instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider prov) {
+                            prov.setAuthenticationValidator(validador);
+                        }
+                    })));
+                })
                 .authorizeHttpRequests(a -> a.anyRequest().authenticated())
                 // La SPA canjea el código con POST /oauth2/token desde su propio
                 // origen: sin CORS el navegador ni siquiera envía la petición.
@@ -186,6 +203,20 @@ class SecurityConfig {
                 // que afirma también que no hay Set-Cookie.
                 .requestCache(c -> c.requestCache(cacheAcotadoA(NAVEGADOR)))
                 .build();
+    }
+
+    /**
+     * Tarea 7: sin esto, un usuario sin ningún rol en la app que pide el
+     * token pasa igual por /oauth2/authorize y recibe un código -y luego un
+     * token con cero autoridades-, que es peor que un rechazo: la aplicación
+     * cree que el usuario ha entrado y no puede hacer nada. Ver
+     * AccesoAlClienteValidator, que delega primero en el validador de serie
+     * (redirect_uri, code_challenge, scope...) antes de mirar los roles, y
+     * que se enchufa más arriba dentro de authorizationServerFilterChain.
+     */
+    @Bean
+    AccesoAlClienteValidator accesoAlClienteValidator(UserRepository usuarios, AppRepository apps) {
+        return new AccesoAlClienteValidator(usuarios, apps);
     }
 
     /**
