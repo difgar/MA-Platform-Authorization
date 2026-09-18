@@ -17,6 +17,9 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.FactorGrantedAuthority;
+import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -28,6 +31,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -240,6 +244,39 @@ class SecurityConfig {
     }
 
     /**
+     * Marca la sesión con el factor -y el instante- con que se autenticó.
+     *
+     * No es cosmético, y no lo descubrió el diseño sino la tarea 8 al pedir el
+     * primer token de verdad: JwtGenerator pone 'auth_time' en TODO ID token
+     * de authorization_code, y lo saca de la FactorGrantedAuthority más
+     * reciente del principal. Sin ninguna, la generación revienta con
+     * "authenticationTime cannot be null" y POST /oauth2/token responde 500
+     * -el access token ya estaba firmado, el que no llega a existir es el ID
+     * token-, así que la SPA se queda sin identidad y, sobre todo, sin el
+     * id_token_hint que exige el logout OIDC: /connect/logout sin él no sabe
+     * qué cliente cierra sesión ni contra qué lista validar la redirección de
+     * salida.
+     *
+     * Hay que ponerlo aquí porque el login federado NO lo pone:
+     * OAuth2LoginAuthenticationProvider sí añade FACTOR_AUTHORIZATION_CODE,
+     * pero OidcAuthorizationCodeAuthenticationProvider -el proveedor que
+     * atiende a un registro con scope 'openid', que es el nuestro- no lo hace
+     * (verificado sobre spring-security-oauth2-client 7.1.1). Es decir, la
+     * combinación "authorization server + oauth2Login contra un proveedor
+     * OIDC" no emite ningún ID token tal cual viene de fábrica.
+     *
+     * El mapper AÑADE, no sustituye: las autoridades que trae el proveedor
+     * siguen ahí. Y esto no toca lo que viaja en el token: las autoridades del
+     * access token las pone ClaimsCustomizer desde AccessGrant, no la sesión.
+     */
+    private static final GrantedAuthoritiesMapper SELLO_DEL_FACTOR = autoridades -> {
+        var conFactor = new ArrayList<GrantedAuthority>(autoridades);
+        conFactor.add(FactorGrantedAuthority.fromAuthority(
+                FactorGrantedAuthority.AUTHORIZATION_CODE_AUTHORITY));
+        return conFactor;
+    };
+
+    /**
      * Cierre por defecto: todo lo que no sea actuator ni authorization server
      * exige autenticación, y es ESTA cadena la que sabe autenticar.
      *
@@ -277,7 +314,9 @@ class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(o -> o
-                        .userInfoEndpoint(u -> u.oidcUserService(usuarios))
+                        .userInfoEndpoint(u -> u
+                                .oidcUserService(usuarios)
+                                .userAuthoritiesMapper(SELLO_DEL_FACTOR))
                         // Sin este handler el fallo se redirige a /login?error
                         // y el motivo del rechazo no viaja en ese 302: quien
                         // intenta entrar no puede saber por qué no puede. Ver
