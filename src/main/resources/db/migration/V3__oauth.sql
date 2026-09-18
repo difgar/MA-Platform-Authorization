@@ -43,16 +43,25 @@ DROP TABLE auth_refresh_token;
 -- timestamp van a TIMESTAMP(6) en ambos.
 --
 -- CONDICIÓN INSTALADA (tarea 9): usar TIMESTAMP(6) en vez de 'timestamptz'
--- sólo es seguro si la JVM y la conexión a MySQL están ancladas a UTC. Las dos
--- lo están ya, y en los tres sitios donde corre este esquema:
---   * el pod: TZ=UTC y -Duser.timezone=UTC en JAVA_TOOL_OPTIONS, más
---     preserveInstants/connectionTimeZone/forceConnectionTimeZoneToSession en
---     la URL de MySQL (kubernetes/deployment.yaml);
---   * el arranque local: systemProperty 'user.timezone' en bootRun
---     (build.gradle);
---   * la suite de integración: el mismo systemProperty en integrationTest.
--- Si alguno de esos tres anclajes desaparece, estos TIMESTAMP(6) vuelven a
--- depender de la zona del entorno y las caducidades se desplazan con ella.
+-- sólo es seguro si la JVM está anclada a UTC, y en MySQL además la conexión.
+--
+-- La JVM lo está en los tres sitios donde corre este esquema: el pod
+-- (TZ=UTC y -Duser.timezone=UTC en JAVA_TOOL_OPTIONS,
+-- kubernetes/deployment.yaml), el arranque local (systemProperty
+-- 'user.timezone' en bootRun) y la suite de integración (el mismo en
+-- integrationTest, build.gradle).
+--
+-- La CONEXIÓN a MySQL está anclada donde hay MySQL, que es el pod:
+-- preserveInstants/connectionTimeZone/forceConnectionTimeZoneToSession en
+-- DB_MA_PLATFORM_URL. El entorno local usa PostgreSQL, cuyo driver no
+-- reinterpreta un 'timestamp' sin zona, así que ahí basta la JVM. Y la suite
+-- conecta con @ServiceConnection, sin esos parámetros: funciona porque la
+-- imagen de MySQL de Testcontainers ya está en UTC, no porque nada lo
+-- garantice — no leas esta suite como prueba de que la conexión del pod está
+-- bien configurada; eso lo fija el ConfigMap y no lo comprueba ningún test.
+--
+-- Si alguno de esos anclajes desaparece, estos TIMESTAMP(6) vuelven a depender
+-- de la zona del entorno y las caducidades se desplazan con ella.
 CREATE TABLE oauth2_authorization (
     id                             VARCHAR(100)  NOT NULL,
     registered_client_id           VARCHAR(100)  NOT NULL,

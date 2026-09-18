@@ -45,6 +45,10 @@ spring:
     # sus URI de redirección autorizadas.
     client-id: ${GOOGLE_CLIENT_ID:sin-configurar.apps.googleusercontent.com}
     client-secret: ${GOOGLE_CLIENT_SECRET:sin-configurar}
+    # La de este perfil, con su puerto y su context path. Tiene que estar
+    # registrada tal cual en el cliente OAuth Web de Google para poder probar
+    # el login en local.
+    redirect-uri: http://localhost:18081/authorization-api/login/oauth2/code/google
 
 authorization:
   jwt:

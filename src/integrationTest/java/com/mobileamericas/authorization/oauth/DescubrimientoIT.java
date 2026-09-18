@@ -7,6 +7,7 @@ import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -29,7 +30,34 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (org.springframework.boot.resttestclient).
  */
 @AutoConfigureTestRestTemplate
+@TestPropertySource(properties =
+        "spring.security.oauth2.authorizationserver.issuer=https://emisor.fijado.example/authorization-api")
 public abstract class DescubrimientoIT extends BaseIT {
+
+    /**
+     * Un emisor que NO es el del servidor de la prueba, y ahí está la gracia.
+     *
+     * El emisor de producción se fija con esta misma propiedad en
+     * application.yml, y hasta la ronda 1 de revisión no lo cubría nada: el
+     * fichero de configuración de esta suite REEMPLAZA al principal, así que
+     * el valor real nunca se carga aquí. De ahí se concluyó -mal, y estaba
+     * escrito como si fuera imposible- que no se podía cubrir. Lo que no se
+     * puede cubrir aquí es el VALOR de producción; el MECANISMO sí: si se
+     * declara un emisor cualquiera y el documento de descubrimiento sale con
+     * él en vez de con http://localhost:{puerto}, Spring Authorization Server
+     * está respetando la propiedad, que es lo que hay que saber. El valor lo
+     * cubre EmisorDeProduccionTest (src/test, sin Spring ni Docker).
+     *
+     * El dominio es de los reservados por el RFC 2606 para ejemplos: no
+     * resuelve y ninguna prueba lo llama.
+     *
+     * Se inyecta en vez de repetirse como constante para que no haya dos
+     * copias del mismo literal que nada compare -el patrón que esta fase
+     * entera existe para quitar-; una anotación de clase no puede referirse a
+     * un campo de su propia clase.
+     */
+    @Value("${spring.security.oauth2.authorizationserver.issuer}")
+    String emisorDeclarado;
 
     @Autowired TestRestTemplate http;
 
@@ -44,6 +72,43 @@ public abstract class DescubrimientoIT extends BaseIT {
                 .contains("\"token_endpoint\"")
                 .contains("\"jwks_uri\"")
                 .contains("\"end_session_endpoint\"");
+    }
+
+    /**
+     * El emisor declarado manda sobre el host de la petición.
+     *
+     * Sin la propiedad, Spring Authorization Server deriva el emisor de cada
+     * petición entrante (AuthorizationServerContextFilter). En producción eso
+     * es el host del pod detrás del ingress: los tokens saldrían con un 'iss'
+     * que rechaza todo consumidor que valide el emisor, y este documento
+     * anunciaría endpoints inalcanzables desde fuera del clúster.
+     *
+     * Se afirma sobre CADA endpoint y no sólo sobre 'issuer': quien configura
+     * su resource server con issuer-uri descubre por aquí dónde está el JWKS,
+     * así que un 'issuer' correcto con un 'jwks_uri' apuntando al pod sería
+     * igual de inútil. Y se afirma que el documento entero no menciona
+     * localhost:{puerto}, que es exactamente lo que volvería a salir si
+     * alguien retirara la propiedad, Boot la renombrara, o un
+     * AuthorizationServerSettings propio la dejara sin efecto.
+     */
+    @Test
+    void el_emisor_declarado_manda_sobre_el_host_de_la_peticion() {
+        var r = http.getForObject("/.well-known/openid-configuration", String.class);
+
+        @SuppressWarnings("unchecked")
+        var metadatos = (Map<String, Object>) new ObjectMapper().readValue(r, Map.class);
+
+        assertThat(metadatos).containsEntry("issuer", emisorDeclarado);
+        assertThat(List.of("authorization_endpoint", "token_endpoint", "jwks_uri",
+                        "userinfo_endpoint", "end_session_endpoint"))
+                .allSatisfy(endpoint -> assertThat((String) metadatos.get(endpoint))
+                        .as("%s tiene que colgar del emisor declarado, no del host de la petición",
+                                endpoint)
+                        .startsWith(emisorDeclarado + "/"));
+        assertThat(r)
+                .as("nada del documento puede salir con el host del servidor de la prueba: "
+                        + "es justo lo que se anunciaría si la propiedad dejara de leerse")
+                .doesNotContain("localhost:" + puerto);
     }
 
     /**

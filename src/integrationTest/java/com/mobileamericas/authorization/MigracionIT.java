@@ -90,6 +90,11 @@ public abstract class MigracionIT extends BaseIT {
         // Sin esto, la prueba de arriba en las_migraciones_crean_las_tablas_esperadas
         // pasa con la tabla creada a medias: existir no es lo mismo que tener el
         // esquema completo que JdbcOAuth2AuthorizationService espera.
+        //
+        // OJO: ese servicio NO está declarado hoy como bean, así que esta tabla
+        // está creada y vacía y nadie la escribe (el almacén en uso es el de
+        // memoria). Esta prueba afirma que el porte del esquema es correcto,
+        // no que se esté usando. Ver README, sección «Réplicas».
         var columnas = jdbc.sql("""
                         SELECT count(*) FROM information_schema.columns
                          WHERE lower(table_name) = 'oauth2_authorization'

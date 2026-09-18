@@ -72,6 +72,25 @@ spring:
     # No se declara el proveedor: con el id de registro 'google', Boot usa los
     # endpoints reales de Google (CommonOAuth2Provider).
     scope: openid,email,profile
+    # La URL a la que Google devuelve al usuario, LITERAL y no derivada.
+    #
+    # El valor por defecto de Boot es '{baseUrl}/login/oauth2/code/google', y
+    # {baseUrl} lo construye Spring con el esquema, el host y el context path
+    # que VE la aplicación. Detrás del ingress eso es http://<ip-del-pod>:8081,
+    # así que el redirect_uri que viaja a Google no coincide con el registrado
+    # en su consola y el login cae ENTERO con redirect_uri_mismatch: un error
+    # que apunta a Google y no aquí.
+    #
+    # forward-headers-strategy (arriba) lo arreglaría, pero sólo si el ingress
+    # manda bien Host y X-Forwarded-Proto, condición que no está verificada y
+    # que no depende de este repositorio. Con el valor literal, la URL
+    # registrada en Google y la que construye la aplicación son el mismo texto
+    # en dos sitios, en vez de una derivación que hay que razonar.
+    #
+    # Sin default a propósito: un entorno que la olvide no debe arrancar
+    # emitiendo la de producción. Incluye el context path (/authorization-api),
+    # que es la parte que el plan de la fase 2 se dejaba.
+    redirect-uri: ${GOOGLE_REDIRECT_URI}
   security.oauth2.authorizationserver:
     # El 'iss' de los tokens y la base de todas las URL del documento de
     # descubrimiento. Fijarlo NO es una preferencia de estilo:
@@ -93,7 +112,15 @@ spring:
     # tarea), cuyo valor NO llevaba el context-path. Si un ConfigMap heredado
     # todavía la define, reutilizar el nombre daría un emisor mal formado sin
     # que nada avise.
-    issuer: ${AUTH_ISSUER:https://auth.mobile-americas.com/authorization-api}
+    #
+    # SIN valor por defecto, y esto es deliberado: el default anterior era la
+    # URL de producción, así que un entorno nuevo que olvidara la variable
+    # arrancaría tan campante emitiendo tokens con el 'iss' de producción y un
+    # descubrimiento que apunta al dominio público. Eso es fallar ABIERTO justo
+    # en el valor que esta tarea existe para fijar, y en un fichero donde todo
+    # lo demás falla cerrado. Ahora el pod no arranca sin ella. El perfil 'dev'
+    # la sobrescribe con la local, y el ConfigMap la trae para producción.
+    issuer: ${AUTH_ISSUER}
   flyway:
     enabled: true
     # La segunda ubicación existe por una sola tabla; ver la cabecera de V3/V4.

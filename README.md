@@ -20,6 +20,14 @@ Requiere **PostgreSQL** en `localhost:5432`, base `ma_auth`, usuario y contrase�
 esquema no vacío sin tabla de historia, para no correr sobre tablas ajenas.
 El esquema lo crea Flyway al arrancar; no hay que ejecutar nada a mano.
 
+> **Si el arranque falla con `Migration checksum mismatch for version 3`**, es
+> porque tu base local tiene `V3__oauth.sql` aplicada con una versión anterior
+> de su cabecera de comentarios (la fase 2 la corrigió dos veces, y Flyway
+> incluye los comentarios en el checksum). No es un problema de datos. Remedio,
+> en una base de desarrollo: recrearla vacía
+> (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;` con el usuario `ma_auth`)
+> y arrancar otra vez. En producción no aplica: `V3` no se ha desplegado nunca.
+
 ```bash
 SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun
 curl -s localhost:18081/authorization-api/.well-known/openid-configuration
@@ -42,11 +50,17 @@ El perfil `dev` (`src/main/resources/application-dev.yml`) fija:
 
 Sin `SPRING_PROFILES_ACTIVE=dev`, el perfil por defecto exige
 `DB_MA_PLATFORM_URL`, `DB_MA_PLATFORM_USER`, `DB_MA_PLATFORM_PASSWORD`,
-`GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`, y **falla al arrancar si falta
-alguno**: es intencional, no un bug — mejor un pod que no arranca que uno que
-arranca mal configurado. `AUTH_ISSUER`, `JWT_KEY_LOCATIONS` y
-`CORS_ALLOWED_ORIGINS` sí tienen valor por defecto (el de producción) en
-`application.yml`.
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, **`AUTH_ISSUER`** y
+**`GOOGLE_REDIRECT_URI`**, y **falla al arrancar si falta alguno**: es
+intencional, no un bug — mejor un pod que no arranca que uno que arranca mal
+configurado.
+
+Las dos últimas no tienen valor por defecto **a propósito**, y merece explicarse
+porque antes sí lo tenían: el default era la URL de producción, así que un
+entorno nuevo que las olvidara arrancaba emitiendo tokens con el `iss` de
+producción y mandando a Google un `redirect_uri` de producción, **sin que nada
+fallara**. Es el único sitio del fichero donde se fallaba abierto. Ahora no
+arranca. `JWT_KEY_LOCATIONS` y `CORS_ALLOWED_ORIGINS` sí conservan default.
 
 ## Ejecutar las pruebas
 
@@ -208,9 +222,11 @@ arranque del pod.
 
 La sesión que sostiene el SSO entre paneles vive en la base de datos
 (`SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES`, Spring Session JDBC), no en
-memoria del pod: con varias réplicas y sin sesión pegajosa, en memoria cada pod
-obligaría a volver a pasar por Google. Caduca a las **12 h de inactividad**,
-deslizante.
+memoria del pod. Caduca a las **12 h de inactividad**, deslizante.
+
+Se hizo así para que varias réplicas pudieran compartirla; **pero hoy no se
+puede correr más de una réplica, y no por la sesión** — ver «Réplicas», justo
+debajo.
 
 **Lo único que borra las filas caducadas** es la tarea programada de Spring
 Session (`spring.session.jdbc.cleanup-cron`, por defecto cada minuto). Está
@@ -240,10 +256,40 @@ Si el paso 3 no baja a cero, la limpieza no está corriendo y `SPRING_SESSION`
 crece sin límite. (La consulta es la misma en MySQL y en PostgreSQL: el esquema
 de esa tabla es común a los dos.)
 
-> `oauth2_authorization` (los códigos y tokens emitidos) **no tiene limpieza
-> automática**: `JdbcOAuth2AuthorizationService` no borra las entradas caducadas.
-> Crece con cada emisión. No es urgente al volumen actual, pero hay que saberlo
-> antes de que lo sea.
+## Réplicas: hoy sólo una, y no es una decisión de capacidad
+
+**`replicas: 1` y el HPA `min = max = 1` son load-bearing. No los subas.**
+
+El motivo: **no hay ningún bean `OAuth2AuthorizationService`**, y Spring Boot
+4.1.1 no autoconfigura ninguno (sólo `RegisteredClientRepository`,
+`AuthorizationServerSettings` y el `JwtDecoder`). Así que Spring Authorization
+Server guarda las autorizaciones en **memoria del pod**
+(`InMemoryOAuth2AuthorizationService`).
+
+Dos consecuencias que hay que tener escritas:
+
+- **La tabla `oauth2_authorization` está creada y vacía.** `V3__oauth.sql` la
+  porta con sus 33 columnas y `MigracionIT` comprueba que el porte es correcto,
+  pero **nadie la escribe ni la lee**. No crece, no hay que limpiarla, y no
+  sirve para auditar nada. Es esquema por adelantado, no almacenamiento vivo.
+- **Un código de autorización emitido por un pod no se puede canjear en otro.**
+  Con dos réplicas y sin sesión pegajosa, una fracción de los canjes falla con
+  `invalid_grant`, de forma intermitente, y el error no señala a ninguna parte.
+  La sesión SSO sobrevive al salto de pod; el código de autorización no.
+
+**Qué haría falta para poder escalar:** declarar un
+`JdbcOAuth2AuthorizationService`. **Se intentó en la fase 2 y se abortó**, y
+conviene saber contra qué se choca antes de volver a intentarlo: esa clase
+serializa la `Authentication` completa a la columna `attributes` y, al releerla,
+la deserializa con el validador de tipos polimórficos de Spring Security, que
+sólo admite clases de su propia lista. Nuestro principal es
+`UsuarioOidcService.UsuarioAutenticado`, así que la lectura falla con
+`Could not resolve type id '…UsuarioAutenticado' … PolymorphicTypeValidator
+denied resolution` y `POST /oauth2/token` responde 500. Escribir sí escribe; lo
+que no se puede es volver a leer. Arreglarlo exige un mixin de Jackson propio
+para ese tipo y ampliar el validador —que es la defensa contra deserialización
+polimórfica insegura—, y eso es un trabajo con su propio diseño y sus propias
+pruebas, no un `@Bean`.
 
 ## Qué ve quien no puede entrar
 
@@ -276,10 +322,22 @@ repo. Puntos que importa no olvidar:
   eso es `http://<ip-del-pod>:8081/authorization-api`: los tokens saldrían con un
   `iss` que ningún consumidor que lo valide acepta, y el documento de
   descubrimiento anunciaría endpoints inalcanzables. Incluye el context path.
-- **El ingress tiene que reenviar `X-Forwarded-Proto` y el `Host` original.** La
-  aplicación los respeta (`server.forward-headers-strategy: framework`), y de
-  ellos sale el `redirect_uri` que se le manda a Google. Si llegan mal, Google
-  rechaza el login por `redirect_uri_mismatch`.
+- **El `redirect_uri` de Google se declara literal**, no se deriva
+  (`GOOGLE_REDIRECT_URI`, ConfigMap). Tiene que ser **carácter a carácter** la
+  misma URL registrada en la consola de Google Cloud. Si se dejara al valor por
+  defecto de Boot (`{baseUrl}/login/oauth2/code/google`), lo construiría Spring
+  con el host que ve la aplicación y, detrás del ingress, Google lo rechazaría
+  con `redirect_uri_mismatch`: el login caería **entero**, con un error que
+  apunta a Google y no a este servicio.
+- **El ingress tiene que reenviar `X-Forwarded-Proto` y el `Host` original, y
+  además *sanearlos*.** La aplicación los respeta
+  (`server.forward-headers-strategy: framework`), y de ellos salen las URL
+  absolutas que construye. Reenviarlas no basta: el ingress tiene que
+  **descartar las que traiga el cliente** y poner las suyas. Si deja pasar un
+  `X-Forwarded-Host` de fuera, cualquiera puede decidir desde qué host construye
+  sus URL este servicio. Con `AUTH_ISSUER` y `GOOGLE_REDIRECT_URI` fijados, los
+  dos valores críticos ya no dependen de esas cabeceras; lo que queda expuesto
+  es el resto de URL derivadas.
 - **UTC en los dos extremos.** `TZ=UTC` y `-Duser.timezone=UTC` en
   `JAVA_TOOL_OPTIONS`, **y** `?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`
   en la URL de MySQL. Los `TIMESTAMP(6)` del esquema no llevan zona (ver la
@@ -318,9 +376,11 @@ Ningún commit los resuelve:
 
 1. **Un único client ID de OAuth Web en Google Cloud**, con
    `https://auth.mobile-americas.com/authorization-api/login/oauth2/code/google`
-   entre sus URI de redirección autorizadas (la ruta **incluye el context path**;
-   es la URL que construye Spring, no una que se elija). Su id y su secreto, en
-   el `Secret` `ma-auth-google-client`.
+   entre sus URI de redirección autorizadas (la ruta **incluye el context path**).
+   Esa misma cadena, carácter a carácter, es `GOOGLE_REDIRECT_URI` en el
+   ConfigMap: son dos copias que **tienen** que coincidir, una aquí y otra en
+   Google, y nada las compara automáticamente. Su id y su secreto, en el
+   `Secret` `ma-auth-google-client`.
 2. **Generar el par de claves de firma** y crear el `Secret` `ma-auth-jwt-keys`
    (`kubectl create secret generic ma-auth-jwt-keys --from-file=active.jwk=./active.jwk`),
    sembrado desde Secret Manager.

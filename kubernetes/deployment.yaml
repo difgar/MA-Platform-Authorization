@@ -37,6 +37,11 @@ data:
   # consumidor que valide el emisor rechazaría los tokens. Incluye el
   # context-path porque los endpoints cuelgan de él.
   AUTH_ISSUER: "https://auth.mobile-americas.com/authorization-api"
+  # La URL a la que Google devuelve al usuario, literal. Tiene que ser
+  # EXACTAMENTE la que esté registrada como URI de redirección autorizada en la
+  # consola de Google Cloud, carácter a carácter, incluido /authorization-api.
+  # Si no coincide, el login cae entero con redirect_uri_mismatch.
+  GOOGLE_REDIRECT_URI: "https://auth.mobile-americas.com/authorization-api/login/oauth2/code/google"
   # Los orígenes desde los que el navegador canjea el código con
   # POST /oauth2/token. Lista exacta, no el comodín que trae application.yml por
   # defecto: con Access-Control-Allow-Credentials: true, *.mobile-americas.com
@@ -57,6 +62,25 @@ metadata:
     app: "ma-authorization"
     env: "prod"
 spec:
+  # NO SUBIR DE 1, y no es una decisión de capacidad.
+  #
+  # No hay ningún bean OAuth2AuthorizationService declarado, y Boot 4.1.1 no
+  # autoconfigura ninguno, así que Spring Authorization Server guarda las
+  # autorizaciones en MEMORIA del pod (InMemoryOAuth2AuthorizationService). La
+  # tabla oauth2_authorization que crea V3__oauth.sql existe y está vacía:
+  # nadie la escribe.
+  #
+  # Consecuencia: un código de autorización emitido por el pod A no se puede
+  # canjear en el pod B. Con dos réplicas y sin sesión pegajosa, una fracción
+  # de los canjes falla con invalid_grant, de forma intermitente y sin que el
+  # error señale a ninguna parte. La sesión SSO sí está en base de datos y
+  # sobrevive; el código de autorización no.
+  #
+  # Para poder subirlas hace falta primero declarar un
+  # JdbcOAuth2AuthorizationService. Se intentó en la tarea 9 y se abortó: esa
+  # clase deserializa el principal con el validador de tipos polimórficos de
+  # Spring Security, que no admite nuestro UsuarioAutenticado. Ver README,
+  # sección «Réplicas», y el informe de la tarea 9.
   replicas: 1
   selector:
     matchLabels:
@@ -129,6 +153,11 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   key: "AUTH_ISSUER"
+                  name: "ma-authorization-prod-deployment-config"
+            - name: "GOOGLE_REDIRECT_URI"
+              valueFrom:
+                configMapKeyRef:
+                  key: "GOOGLE_REDIRECT_URI"
                   name: "ma-authorization-prod-deployment-config"
             - name: "CORS_ALLOWED_ORIGINS"
               valueFrom:
@@ -225,6 +254,9 @@ spec:
     kind: "Deployment"
     name: "ma-authorization-prod-deployment"
     apiVersion: "apps/v1"
+  # min = max = 1 por la misma razón que 'replicas: 1' del Deployment: el
+  # almacén de autorizaciones es de memoria, así que escalar rompe el canje del
+  # código. No es un tope de coste que se pueda subir sin más.
   minReplicas: 1
   maxReplicas: 1
   metrics:

@@ -106,11 +106,16 @@ public abstract class RegistroDeClientesIT extends BaseIT {
     }
 
     /**
-     * JdbcOAuth2AuthorizationService (la tabla oauth2_authorization ya está en
-     * V2, ver MigracionIT) solo persiste el id del cliente, no el cliente
-     * completo, y lo reconstruye con findById al releer una autorización. Sin
-     * esto implementado de verdad, el canje del código fallaría más adelante
-     * con un UnsupportedOperationException que no diría nada sobre su causa.
+     * findById no es un método de adorno: el end_session_endpoint resuelve el
+     * cliente del id_token_hint por su id interno
+     * (OidcLogoutAuthenticationProvider), y sin esto implementado de verdad el
+     * logout falla con un UnsupportedOperationException que no diría nada
+     * sobre su causa.
+     *
+     * Esto decía antes que quien lo llamaba era JdbcOAuth2AuthorizationService,
+     * al releer de oauth2_authorization. Era falso por partida doble: esa tabla
+     * la crea V3, no V2, y no hay ningún bean OAuth2AuthorizationService, así
+     * que el almacén de autorizaciones es el de memoria. Ver README, «Réplicas».
      */
     @Test
     void un_cliente_tambien_se_encuentra_por_su_id_interno() {

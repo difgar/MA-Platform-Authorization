@@ -54,13 +54,21 @@ class RegisteredClientRepositoryAdapter implements RegisteredClientRepository {
     }
 
     /**
-     * El id es el mismo UUID de auth_app (ver toRegisteredClient). Lo necesita
-     * JdbcOAuth2AuthorizationService (tabla oauth2_authorization, ya creada en
-     * V2 -ver MigracionIT-) al releer una autorización guardada: esa tabla solo
-     * persiste el id del cliente, no el cliente completo, así que reconstruye
-     * el RegisteredClient con este método. Sin él implementado de verdad, el
-     * canje del código fallaría más adelante con un error que no diría nada de
-     * su causa real.
+     * El id es el mismo UUID de auth_app (ver toRegisteredClient).
+     *
+     * Quién lo llama HOY, comprobado sobre las clases de
+     * spring-security-oauth2-authorization-server 7.1.1 y no deducido:
+     * OidcLogoutAuthenticationProvider (el end_session_endpoint resuelve el
+     * cliente del id_token_hint por su id interno), más los proveedores de
+     * introspección y de device verification. Sin este método implementado de
+     * verdad, el logout falla con un UnsupportedOperationException que no dice
+     * nada de su causa; lo cubre FlujoCompletoIT.
+     *
+     * Una versión anterior de este comentario lo justificaba con
+     * JdbcOAuth2AuthorizationService y con la tabla oauth2_authorization. Las
+     * dos cosas eran falsas: esa tabla la crea V3 (no V2) y NO hay hoy ningún
+     * bean OAuth2AuthorizationService, así que el almacén es el de memoria y
+     * nadie relee nada de esa tabla. Ver README, sección «Réplicas».
      */
     @Override
     public RegisteredClient findById(String id) {
