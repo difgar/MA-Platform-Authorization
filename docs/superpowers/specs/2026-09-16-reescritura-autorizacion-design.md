@@ -546,10 +546,31 @@ cerrada por defecto. Despliegue arreglado (§9).
 **Fase 3 — Integración.** Alta de la app `trafficflow` con sus permisos;
 *resource server* en `MA-TrafficFlow-Backend` (hoy sin `spring-boot-starter-security`,
 pero con `serviceIdentity: bearer JWT` ya declarado en
-`contracts/openapi/admin-api.yaml`); cabecera `Authorization` en
-`MA-TrafficFlow-UI` (un único punto: `peticion()` en `src/api/client.ts` —
-el manejo de 401/403 ya existe en `NoAutenticadoError`/`SinPermisoError`);
+`contracts/openapi/admin-api.yaml`); autenticación en `MA-TrafficFlow-UI`;
 y adaptación de `MA-Platform-UI` a las cookies `HttpOnly` (§5.3).
+
+⚠️ Corregido el 2026-09-17, con datos del propio equipo de TrafficFlow. Una
+versión anterior de este párrafo decía que el trabajo en el panel era «cabecera
+`Authorization`… un único punto: `peticion()` en `src/api/client.ts`». Era falso
+por dos motivos, y ambos habrían hecho subestimar la fase:
+
+1. **Contradecía §5.3 de este mismo documento.** El access token se entrega en
+   una cookie `HttpOnly`, así que el JavaScript del panel no puede leerlo ni
+   ponerlo en una cabecera. Lo que necesita es `credentials: 'include'`, y
+   `MA-TrafficFlow-Backend` necesita un `BearerTokenResolver` que lea la cookie
+   `ma_access` — el mismo patrón que `web/security/CookieBearerTokenResolver`.
+   Eso cambia el diseño de la integración, no sólo su configuración.
+2. **No es un único punto.** El panel **no tiene hoy ninguna pantalla de login ni
+   nada que llame a `/v1/auth/*`**: hay que construir el Google Sign-In, el
+   estado de sesión, el logout y la renovación ante un 401. Lo que sí está hecho
+   es el tratamiento del rechazo — `NoAutenticadoError` y `SinPermisoError`
+   separados, y diez pantallas que ya distinguen «te cortaron el acceso» de «no
+   hay datos», con pruebas por pantalla. Falta quien produzca el token.
+
+Confirmado también desde ese lado: los seis recursos del catálogo de permisos son
+`redes`, `endpoints` de postback, `servicios`, `campanas`, `enlaces` y `reglas`.
+Los verbos exactos que usa cada pantalla los aporta ese equipo cuando se abra la
+fase, para no inventar permisos que nadie comprueba ni dejar fuera alguno que sí.
 
 ## 11. Riesgos
 
