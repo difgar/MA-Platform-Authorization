@@ -15,12 +15,16 @@ import java.util.LinkedHashMap;
 /**
  * Qué ve quien intenta entrar y no puede.
  *
- * Existe porque oauth2Login manda los fallos a /login?error y auth NO sirve
- * HTML: /login cae en la cadena de cierre, que exige autenticación y -con un
- * solo proveedor registrado- vuelve a redirigir a Google, así que el usuario
- * rechazado entra en un bucle de redirecciones en lugar de leer por qué no
- * puede entrar. Y el motivo (no está dado de alta, o Google no da su email
- * como verificado) sólo lo conoce el servidor: por la redirección no viaja.
+ * Existe porque oauth2Login manda los fallos a /login?error, y el motivo del
+ * rechazo -no está dado de alta, está dado de baja, o Google no da su email
+ * como verificado- sólo lo conoce el servidor y NO viaja en ese 302. Quien
+ * intenta entrar no puede saber por qué no puede, y una prueba tampoco puede
+ * distinguir un rechazo de otro ni un rechazo de un éxito.
+ *
+ * (Lo que hace /login?error en esta configuración no está verificado y por eso
+ * no se afirma aquí: auth no sirve HTML y con un solo proveedor registrado
+ * oauth2Login no genera pantalla de login, así que probablemente sea un 404
+ * vía /error. La razón de arriba basta por sí sola.)
  *
  * Responde en el formato de error de OAuth 2.0, que es el único idioma que
  * este servicio habla, y con 401: la persona está autenticada ante Google

@@ -103,7 +103,7 @@ public abstract class BaseOauthIT extends BaseIT {
                 "GET /oauth2/authorization/google no redirigió a ningún proveedor (HTTP "
                         + aGoogle.statusCode() + "): sin oauth2Login no hay login que iniciar. "
                         + aGoogle.body()));
-        var cookies = aplicarCookies(new LinkedHashMap<>(), aGoogle);
+        var cookies = aplicarCookies("", aGoogle);
 
         // Paso 2: el simulado hace de Google y emite un código para esta identidad.
         var vuelta = GoogleSimulado.arrancar().callbackPara(location, email, emailVerificado);
@@ -111,14 +111,14 @@ public abstract class BaseOauthIT extends BaseIT {
         // Paso 3: con la cookie del paso 1 -sin ella Spring no encuentra la
         // petición guardada y no puede validar state ni nonce-, el servicio
         // canjea el código, pide userinfo y establece la sesión.
-        var callback = get(vuelta, cabecera(cookies));
+        var callback = get(vuelta, cookies);
         if (callback.statusCode() != 302) {
             throw new IllegalStateException("el login no estableció sesión (HTTP "
                     + callback.statusCode() + "): " + callback.body());
         }
         // La protección contra fijación de sesión cambia el identificador al
         // autenticar, así que la cookie que vale es la del paso 3, no la del 1.
-        return cabecera(aplicarCookies(cookies, callback));
+        return aplicarCookies(cookies, callback);
     }
 
     /**
@@ -132,13 +132,21 @@ public abstract class BaseOauthIT extends BaseIT {
 
     /** Igual, con un reto PKCE propio: quien vaya a canjear el código necesita su verifier. */
     protected ResponseEntity<String> pedirAutorizacion(String cookie, String clientId, String reto) {
-        var url = urlBase() + "/oauth2/authorize?response_type=code"
+        return comoResponseEntity(get(urlDeAutorizacion(clientId, reto), cookie));
+    }
+
+    /**
+     * La URL de /oauth2/authorize que usa pedirAutorizacion, para quien
+     * necesite pedirla a mano (por ejemplo sin cookie, para ver a dónde manda
+     * al navegador que llega sin sesión).
+     */
+    protected String urlDeAutorizacion(String clientId, String reto) {
+        return urlBase() + "/oauth2/authorize?response_type=code"
                 + "&client_id=" + codificar(clientId)
                 + "&redirect_uri=" + codificar(redirectUriDe(clientId))
                 + "&scope=openid"
                 + "&code_challenge=" + codificar(reto)
                 + "&code_challenge_method=S256";
-        return comoResponseEntity(get(url, cookie));
     }
 
     /**
@@ -177,11 +185,14 @@ public abstract class BaseOauthIT extends BaseIT {
     }
 
     /**
-     * Aplica los Set-Cookie de una respuesta al tarro de cookies. Una cookie
-     * con valor vacío es un borrado (así se cierra una sesión), no una cookie
-     * más: guardarla dejaría viva la que el servidor acaba de invalidar.
+     * Los Set-Cookie de una respuesta aplicados sobre la cabecera Cookie que
+     * se tenía, y devueltos como una cabecera nueva lista para el siguiente
+     * get. Una cookie con valor vacío es un borrado (así se cierra una
+     * sesión), no una cookie más: guardarla dejaría viva la que el servidor
+     * acaba de invalidar.
      */
-    private static Map<String, String> aplicarCookies(Map<String, String> cookies, HttpResponse<?> respuesta) {
+    protected static String aplicarCookies(String cabecera, HttpResponse<?> respuesta) {
+        var cookies = parsear(cabecera);
         for (var setCookie : respuesta.headers().allValues("set-cookie")) {
             var par = setCookie.split(";", 2)[0];
             var igual = par.indexOf('=');
@@ -196,13 +207,23 @@ public abstract class BaseOauthIT extends BaseIT {
                 cookies.put(nombre, valor);
             }
         }
-        return cookies;
-    }
-
-    private static String cabecera(Map<String, String> cookies) {
         return cookies.entrySet().stream()
                 .map(c -> c.getKey() + "=" + c.getValue())
                 .collect(Collectors.joining("; "));
+    }
+
+    private static Map<String, String> parsear(String cabecera) {
+        var cookies = new LinkedHashMap<String, String>();
+        if (cabecera == null || cabecera.isBlank()) {
+            return cookies;
+        }
+        for (var cookie : cabecera.split(";")) {
+            var igual = cookie.indexOf('=');
+            if (igual > 0) {
+                cookies.put(cookie.substring(0, igual).trim(), cookie.substring(igual + 1).trim());
+            }
+        }
+        return cookies;
     }
 
     private String redirectUriDe(String clientId) {

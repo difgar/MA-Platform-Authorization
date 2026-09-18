@@ -17,12 +17,16 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @EnableWebSecurity
@@ -31,16 +35,42 @@ import java.util.List;
 class SecurityConfig {
 
     /**
+     * text/html de verdad, y no "text/html o cualquier cosa".
+     *
+     * MediaTypeRequestMatcher no ignora ningún tipo por defecto, y un Accept
+     * ausente -o el comodín que manda curl- se resuelve como MediaType.ALL,
+     * que isCompatibleWith(text/html) da por bueno. Sin ignorarlo, una
+     * petición de máquina a /oauth2/token, /oauth2/introspect o /oauth2/revoke
+     * que caiga en el anyRequest().authenticated() de esa cadena -por ejemplo
+     * sin credenciales de cliente- recibe un 302 hacia Google y, de paso, una
+     * cookie de sesión, en vez de un error de OAuth: el cliente no sabe qué
+     * hacer con eso y el diagnóstico apunta al sitio equivocado.
+     *
+     * Con MediaType.ALL ignorado, esas peticiones vuelven al 401 del
+     * HttpStatusEntryPoint que registra el configurer, y el navegador -que
+     * manda 'text/html,application/xhtml+xml,...'- sigue yendo al login.
+     * DescubrimientoIT tiene una prueba por rama.
+     */
+    private static final MediaTypeRequestMatcher NAVEGADOR = navegador();
+
+    private static MediaTypeRequestMatcher navegador() {
+        var matcher = new MediaTypeRequestMatcher(MediaType.TEXT_HTML);
+        matcher.setIgnoredMediaTypes(Set.of(MediaType.ALL));
+        return matcher;
+    }
+
+    /**
      * Descubierto al verificar las probes del Task 10 (docker run + curl),
      * no algo documentado en el spec: aunque management corre en su propio
      * puerto y en su propio contexto hijo, Spring Boot resuelve
      * springSecurityFilterChain (visible por herencia desde el contexto
      * padre) para las peticiones que llegan por ESE puerto también, así que
-     * sin esta cadena aparte, /actuator/health/{liveness,readiness} exige el
-     * mismo Bearer que el resto de la API. Eso deja las probes de
-     * kubernetes/deployment.yaml sin poder autenticarse nunca: el pod jamás
-     * pasaría readinessProbe/livenessProbe. @Order(0) para que
-     * FilterChainProxy la evalúe antes que filterChain() de más abajo.
+     * sin esta cadena aparte, /actuator/health/{liveness,readiness} exige lo
+     * mismo que el resto de la API: hoy, una sesión establecida con Google.
+     * Eso deja las probes de kubernetes/deployment.yaml sin poder autenticarse
+     * nunca -una probe no hace un login federado-: el pod jamás pasaría
+     * readinessProbe/livenessProbe. @Order(0) para que FilterChainProxy la
+     * evalúe antes que filterChain() de más abajo.
      *
      * EndpointRequest.to(HealthEndpoint.class, InfoEndpoint.class), NO
      * EndpointRequest.toAnyEndpoint(): la primera versión de esta cadena
@@ -52,9 +82,12 @@ class SecurityConfig {
      * peor que ningún guardia, porque quien lee este método deja de pensar en
      * ello. Con el matcher fijado a los dos endpoints concretos, añadir 'env'
      * a exposure.include para depurar un incidente NO lo hace público: cae en
-     * el anyRequest().authenticated() de filterChain() y sigue exigiendo
-     * Bearer. Ver ActuatorSecurityIT, que reproduce justo ese escenario
-     * (expone 'env' a propósito y comprueba que sigue devolviendo 401).
+     * el anyRequest().authenticated() de filterChain(), que hoy responde con
+     * la redirección al login con Google (antes, con la emisión propia de la
+     * fase 1, era un 401 con WWW-Authenticate: Bearer). Ver
+     * ActuatorSecurityIT, que reproduce justo ese escenario: expone 'env' a
+     * propósito y comprueba que no sale un 200 con el entorno del proceso
+     * dentro, sea cual sea el rechazo que toque.
      */
     @Bean
     @Order(0)
@@ -132,22 +165,44 @@ class SecurityConfig {
                 // los demás los llama código, que no sabría qué hacer con una
                 // redirección a una pantalla de login.
                 //
-                // OJO con el alcance real de ese matcher, que es más ancho de
-                // lo que parece: un Accept ausente se resuelve como '*\/*', y
-                // MediaTypeRequestMatcher lo considera compatible con
-                // text/html (no declara ignoredMediaTypes), así que un cliente
-                // que no manda Accept TAMBIÉN acaba en el login. Ver
-                // DescubrimientoIT.authorize_sin_sesion_no_emite_nada, que es
-                // exactamente ese caso.
-                //
                 // La URL es la del filtro de oauth2Login de la cadena de
                 // cierre, no una pantalla propia: con un solo proveedor
                 // registrado Spring redirige directo a Google sin pantalla de
                 // selección, y auth no sirve HTML.
                 .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/oauth2/authorization/google"),
-                        new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
+                        NAVEGADOR))
+                // El mismo matcher gobierna las dos mitades de la misma idea,
+                // y no es una coincidencia: la petición guardada existe SÓLO
+                // para volver a ella después del login, así que se guarda
+                // exactamente cuando se manda a alguien al login.
+                //
+                // ExceptionTranslationFilter llama a saveRequest() antes del
+                // entry point, y guardar crea sesión; desde que la sesión se
+                // persiste, eso es una fila en SPRING_SESSION con 12 h de
+                // vida. Con el matcher, el navegador la estrena -la necesita- y
+                // el cliente de máquina que recibe el 401 no. Ver
+                // DescubrimientoIT.authorize_sin_sesion_y_sin_pedir_html_no_va_al_login,
+                // que afirma también que no hay Set-Cookie.
+                .requestCache(c -> c.requestCache(cacheAcotadoA(NAVEGADOR)))
                 .build();
+    }
+
+    /**
+     * Un request cache que sólo GUARDA lo que case con el matcher.
+     *
+     * Ese matcher no gobierna la recuperación: getRequest() sigue devolviendo
+     * lo que haya guardado cualquier cadena sobre la misma sesión (verificado,
+     * ver LoginIT.sin_sesion_authorize_manda_al_login_y_al_volver_emite_el_codigo:
+     * guarda la cadena @Order(1) y lo recupera el manejador de éxito de
+     * oauth2Login, que vive en la @Order(2)). Por eso se acota el guardado en
+     * vez de desactivar el cache con un NullRequestCache, que rompería esa
+     * vuelta.
+     */
+    private static RequestCache cacheAcotadoA(RequestMatcher aGuardar) {
+        var cache = new HttpSessionRequestCache();
+        cache.setRequestMatcher(aGuardar);
+        return cache;
     }
 
     /**
@@ -189,11 +244,20 @@ class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2Login(o -> o
                         .userInfoEndpoint(u -> u.oidcUserService(usuarios))
-                        // Sin este handler el fallo se redirige a /login?error,
-                        // que exige autenticación y vuelve a mandar a Google:
-                        // un bucle en vez de un motivo. Ver
+                        // Sin este handler el fallo se redirige a /login?error
+                        // y el motivo del rechazo no viaja en ese 302: quien
+                        // intenta entrar no puede saber por qué no puede. Ver
                         // RespuestaDeLoginFallido.
                         .failureHandler(new RespuestaDeLoginFallido()))
+                // Esta cadena no guarda NINGUNA petición: la única a la que
+                // hay que volver después del login es la de /oauth2/authorize,
+                // y ésa la guarda la cadena @Order(1). Guardar aquí sólo
+                // conseguiría que un GET anónimo a cualquier ruta estrenara
+                // una sesión persistida de 12 h en la base de datos compartida
+                // de la plataforma, sin nada a lo que volver: este servicio no
+                // sirve contenido. Ver
+                // LoginIT.una_peticion_anonima_no_escribe_sesion_en_la_base_de_datos.
+                .requestCache(c -> c.requestCache(cacheAcotadoA(peticion -> false)))
                 .build();
     }
 

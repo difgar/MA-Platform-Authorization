@@ -18,7 +18,17 @@ spring:
   # y SPRING_SESSION seguiría vacía, que es justo lo que LoginIT verifica.
   session:
     timeout: 12h
-    jdbc.initialize-schema: never   # las tablas las crea Flyway
+    jdbc:
+      initialize-schema: never      # las tablas las crea Flyway
+      # '-' es Scheduled.CRON_DISABLED, y SÓLO en pruebas. La limpieza de
+      # sesiones caducadas corre en su propio hilo (spring-session-N) contra
+      # la base de datos, y al cerrar cada contexto se cruza con el cierre de
+      # Hikari: aparece un ERROR "Failed to release JPA EntityManager"
+      # intermitente que no es un fallo de nada y que tapa el ruido que sí
+      # importaría mirar. En producción la limpieza se queda con su valor por
+      # defecto (cada minuto): es lo único que contiene el crecimiento de
+      # SPRING_SESSION.
+      cleanup-cron: "-"
   security.oauth2.client.registration.google:
     # SOLO PARA TESTS, y sin ningún valor que haya que hacer coincidir con
     # nada: el proveedor simulado no valida el secreto, y la audiencia del ID

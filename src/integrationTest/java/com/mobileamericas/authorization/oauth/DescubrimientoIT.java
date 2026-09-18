@@ -118,6 +118,10 @@ public abstract class DescubrimientoIT extends BaseIT {
      * regresión aquí intentaría conectarse de verdad a
      * https://admin.mobile-americas.com y fallaría con un error de E/S en vez
      * de con una aserción legible.
+     *
+     * Ésta es la rama de NAVEGADOR (Accept: text/html, ver el helper get). La
+     * de cliente de máquina es la prueba de más abajo, y responde otra cosa a
+     * propósito.
      */
     @Test
     void authorize_sin_sesion_no_emite_nada() throws Exception {
@@ -133,6 +137,38 @@ public abstract class DescubrimientoIT extends BaseIT {
                 .as("al usuario sin sesión se le manda a autenticarse, no de vuelta a su aplicación")
                 .endsWith("/oauth2/authorization/google")
                 .doesNotContain("admin.mobile-americas.com");
+    }
+
+    /**
+     * La otra rama del entry point, y la que motivó setIgnoredMediaTypes:
+     * quien no pide HTML no acaba en el login.
+     *
+     * Un cliente de máquina -sin cabecera Accept, que es lo que manda curl y
+     * lo que se resuelve como el comodín- debe recibir el 401 del
+     * HttpStatusEntryPoint que registra el configurer. Sin ese
+     * setIgnoredMediaTypes(ALL), el comodín se considera compatible con
+     * text/html y esta misma petición recibía 302 hacia Google y una cookie de
+     * sesión: un cliente de token no sabe qué hacer con eso, y el diagnóstico
+     * apunta al sitio equivocado. Comprobado quitando la línea: 302 + cookie.
+     *
+     * La aserción sobre Set-Cookie es la mitad que importa tanto como el
+     * código: lo que se estaba regalando era una sesión, no sólo un status
+     * equivocado.
+     */
+    @Test
+    void authorize_sin_sesion_y_sin_pedir_html_no_va_al_login() throws Exception {
+        var r = get("/oauth2/authorize?response_type=code&client_id=admin"
+                + "&redirect_uri=https%3A%2F%2Fadmin.mobile-americas.com%2Fcallback&scope=openid"
+                + "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+                + "&code_challenge_method=S256", null);
+
+        assertThat(r.statusCode()).isEqualTo(401);
+        assertThat(r.headers().firstValue("Location"))
+                .as("a un cliente que no pide HTML no se le manda a ninguna pantalla")
+                .isEmpty();
+        assertThat(r.headers().allValues("set-cookie"))
+                .as("y tampoco se le estrena una sesión que nadie le ha pedido")
+                .isEmpty();
     }
 
     /**
@@ -170,11 +206,25 @@ public abstract class DescubrimientoIT extends BaseIT {
                 .endsWith("/oauth2/authorization/google");
     }
 
+    /**
+     * Como un navegador: Accept: text/html. La cabecera NO es decorativa
+     * -antes esta prueba no la mandaba y recorría la rama comodín del matcher
+     * en vez de la de navegador, así que no verificaba el caso que el entry
+     * point pretende cubrir-.
+     */
     private HttpResponse<String> get(String path) throws Exception {
+        return get(path, "text/html");
+    }
+
+    /** Sin cabecera Accept si 'accept' es null: es lo que manda un cliente de máquina. */
+    private HttpResponse<String> get(String path, String accept) throws Exception {
+        var peticion = HttpRequest.newBuilder(URI.create("http://localhost:" + puerto + path)).GET();
+        if (accept != null) {
+            peticion.header("Accept", accept);
+        }
         return HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build()
-                .send(HttpRequest.newBuilder(URI.create("http://localhost:" + puerto + path)).GET().build(),
-                        HttpResponse.BodyHandlers.ofString());
+                .send(peticion.build(), HttpResponse.BodyHandlers.ofString());
     }
 }
