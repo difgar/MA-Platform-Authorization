@@ -59,13 +59,28 @@ authorization:
   jwt:
     # Sin 'issuer': la propiedad se retiró en la tarea 9 por huérfana. El 'iss'
     # de los tokens lo fija spring.security.oauth2.authorizationserver.issuer,
-    # que este fichero NO declara a propósito: la suite corre en un puerto
-    # aleatorio, así que el emisor tiene que seguir derivándose de la petición
-    # para que el documento de descubrimiento apunte al servidor de la prueba.
+    # que este fichero NO declara a propósito: la mayoría de la suite necesita
+    # que el emisor se derive de la petición, porque cada contexto arranca en un
+    # puerto aleatorio y el documento de descubrimiento tiene que apuntar al
+    # servidor de la prueba (FlujoCompletoIT construye su JwtDecoder a partir de
+    # ese documento, jwks_uri incluido).
     #
-    # Consecuencia que conviene tener presente al leer FlujoCompletoIT: el pin
-    # del emisor de producción (application.yml) NO lo cubre ninguna prueba de
-    # esta suite. No puede: aquí el host de la petición ES el del servidor.
+    # Que este fichero no lo declare NO significa que el pin del emisor esté sin
+    # cubrir. Está cubierto, en dos mitades y en dos sitios:
+    #
+    #   * el MECANISMO -que Spring Authorization Server respete la propiedad en
+    #     vez de derivar el emisor de la petición-, en DescubrimientoIT, que la
+    #     declara con @TestPropertySource a un emisor ajeno y exige que salga en
+    #     'issuer' y en los cinco endpoints del descubrimiento, y que el
+    #     documento no mencione el host del servidor. En los dos motores.
+    #   * el VALOR de producción, en EmisorDeProduccionTest (src/test, sin
+    #     Spring ni Docker): que application.yml lo exija sin valor por defecto
+    #     y que el del ConfigMap lleve el context-path.
+    #
+    # Una versión anterior de este comentario decía que cubrirlo era imposible.
+    # Era falso, y además del tipo de comentario que hace que nadie lo intente:
+    # lo que no cabe aquí es el VALOR de producción -fijarlo rompería el resto
+    # de la suite-, no la cobertura.
     #
     # SOLO PARA TESTS: 'test-keys/active.jwk' está deliberadamente commiteado
     # en el repositorio. No es la clave de ningún entorno real; sirve
