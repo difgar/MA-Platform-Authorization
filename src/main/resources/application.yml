@@ -23,7 +23,7 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    # La segunda ubicación existe por una sola tabla; ver V4 y el spec §6.1.
+    # La segunda ubicación existe por una sola tabla; ver la cabecera de V3/V4.
     # No puede vivir bajo db/migration/{vendor}: el escaneo de la primera
     # ubicación es recursivo y encontraría los dos ficheros V4 (mysql y
     # postgresql) a la vez, sea cual sea el motor conectado -> "Found more

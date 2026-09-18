@@ -87,6 +87,11 @@ tasks.register('integrationTest', Test) {
     useJUnitPlatform()
     shouldRunAfter tasks.named('test')
     testLogging { events 'failed' }
+    // TIMESTAMP(6) en vez de 'timestamptz' (V3__oauth.sql) sólo es exacto si la
+    // JVM está en UTC. En producción esa condición la instala la tarea 9; aquí
+    // se fija de una vez para que esta suite -la que valida el porte entre
+    // motores- no lo dé por hecho antes de que sea cierto.
+    systemProperty 'user.timezone', 'UTC'
 }
 
 tasks.named('check') {

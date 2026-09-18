@@ -1,6 +1,18 @@
 -- Fase 2: el registro de clientes OAuth vive en auth_app, no en una tabla
 -- aparte del framework. Dos registros que deben concordar sin que nada los
 -- compare son la forma del bug que mantuvo este servicio caído.
+--
+-- El subconjunto portable que enuncia la cabecera de V1 (VARCHAR, BIGINT,
+-- BOOLEAN, TIMESTAMP(6), TEXT) se queda corto para lo que sigue: CHAR(36),
+-- usado en SPRING_SESSION más abajo, también es común a MySQL y PostgreSQL.
+-- No se corrige la lista en V1 porque editarlo le cambiaría el checksum a
+-- Flyway y rompería 'validate' en cualquier entorno donde ya se aplicó.
+--
+-- V2 dice, sobre google_client_id, que "se sustituyen por los reales con una
+-- migración posterior o por el CRUD de la fase 2": esta migración es esa
+-- posterior, y lo que hace con la columna es borrarla, no rellenarla. No se
+-- corrige V2 por la misma razón que V1 -el checksum-, no porque la frase
+-- siga siendo cierta cuando V2 corre.
 
 ALTER TABLE auth_app ADD COLUMN redirect_uris TEXT;
 ALTER TABLE auth_app ADD COLUMN post_logout_redirect_uris TEXT;
@@ -28,8 +40,16 @@ DROP TABLE auth_refresh_token;
 -- Esquema del authorization server, portado al subconjunto portable.
 -- Su DDL original usa 'blob' y 'timestamp'; su propia cabecera indica pasar
 -- los blob a 'text' en PostgreSQL, porque son datos de caracteres. Los
--- timestamp van a TIMESTAMP(6) en ambos, y la exactitud se garantiza fijando
--- UTC en la JVM y en la conexión (ver application.yml y el deployment).
+-- timestamp van a TIMESTAMP(6) en ambos.
+--
+-- PENDIENTE (tarea 9): usar TIMESTAMP(6) en vez de 'timestamptz' sólo es
+-- seguro si la JVM y la conexión a MySQL quedan ancladas a UTC; hoy NINGUNA
+-- de las dos lo está (ni application.yml ni kubernetes/deployment.yaml fijan
+-- zona horaria). Hasta que la tarea 9 instale ese anclaje, la exactitud de
+-- estos TIMESTAMP(6) depende de la zona del entorno donde corra el proceso.
+-- La suite de integración sí ancla su propia JVM a UTC (ver 'integrationTest'
+-- en build.gradle), para no validar el porte bajo una condición que en
+-- producción todavía no se cumple.
 CREATE TABLE oauth2_authorization (
     id                             VARCHAR(100)  NOT NULL,
     registered_client_id           VARCHAR(100)  NOT NULL,
@@ -68,6 +88,10 @@ CREATE TABLE oauth2_authorization (
 );
 
 -- Sesión SSO. La tabla de atributos va aparte, por motor: ver V4.
+-- MAX_INACTIVE_INTERVAL es BIGINT aquí y no INT como en el esquema oficial de
+-- Spring Session: la lista de tipos portables de esta fase no incluye INT.
+-- Es seguro de todos modos porque JdbcIndexedSessionRepository lo lee con
+-- ResultSet.getInt(...), que funciona igual sobre una columna más ancha.
 CREATE TABLE SPRING_SESSION (
     PRIMARY_ID            CHAR(36) NOT NULL,
     SESSION_ID            CHAR(36) NOT NULL,
