@@ -174,6 +174,37 @@ Sin ese anclaje a UTC, un `timestamp` sin zona se escribe y se lee según la zon
 de la JVM: si cambia, las caducidades se desplazan y los tokens expiran antes o
 después de lo debido. Es el tipo de fallo que no se ve hasta que se ve.
 
+### 6.1 Una excepción al juego único de migraciones, y por qué se acepta
+
+Verificado al preparar el plan: **Spring Session no publica un esquema portable**,
+sino uno por motor — veinte ficheros en su jar. La diferencia entre el de MySQL y
+el de PostgreSQL es exactamente esta:
+
+```
+< ATTRIBUTE_BYTES BLOB  NOT NULL,     (MySQL)
+> ATTRIBUTE_BYTES BYTEA NOT NULL,     (PostgreSQL)
+```
+
+Y aquí **no hay salida**: esa columna es genuinamente binaria —guarda atributos
+de sesión serializados— y no existe un tipo con sintaxis común entre ambos. Es
+distinto de los `blob` del authorization server, que resultaron ser de caracteres
+y por eso admiten `text`. El `ENGINE=InnoDB ROW_FORMAT=DYNAMIC` sí es descartable.
+
+**Decisión: `SPRING_SESSION_ATTRIBUTES` se crea en una migración por motor**, con
+`classpath:db/migration/{vendor}`. Todo lo demás sigue en el juego compartido.
+
+Esto contradice una regla de la fase 1 —un único juego de migraciones, sin
+carpetas por motor— y la contradice a sabiendas. La regla existía porque **dos
+ficheros que deben concordar sin que nada los compare** son la forma del bug que
+mantuvo el servicio caído. Aquí esa premisa no se cumple: **la suite de
+integración ejecuta la misma prueba contra los dos motores en cada build**, así
+que sí hay algo que los compara, y una divergencia falla el build en lugar de
+llegar a producción.
+
+La condición es esa, y no es opcional: el flujo SSO completo debe probarse en
+ambos motores. Si alguna vez se deja de probar uno, esta excepción deja de estar
+justificada.
+
 ## 7. Tokens, TTL y renovación
 
 Del hallazgo 4 se sigue todo lo demás. **Sin refresh token, renovar es una
