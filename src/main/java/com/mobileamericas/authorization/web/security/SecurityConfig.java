@@ -63,8 +63,8 @@ class SecurityConfig {
     }
 
     /**
-     * Descubierto al verificar las probes del Task 10 (docker run + curl),
-     * no algo documentado en el spec: aunque management corre en su propio
+     * Descubierto al verificar las probes de la fase 1, tarea 10 (docker run
+     * + curl), no algo documentado en el spec: aunque management corre en su propio
      * puerto y en su propio contexto hijo, Spring Boot resuelve
      * springSecurityFilterChain (visible por herencia desde el contexto
      * padre) para las peticiones que llegan por ESE puerto también, así que
@@ -111,10 +111,27 @@ class SecurityConfig {
      * OpenID (/.well-known/openid-configuration) ni end_session_endpoint, que
      * es justo lo que la SPA necesita para cerrar sesión. Ver DescubrimientoIT.
      *
-     * Esta cadena NO autentica a nadie: no declara ningún mecanismo. Lo que sí
-     * hace es DENEGAR, y de eso se encarga el anyRequest().authenticated() de
-     * más abajo, que no es decorativo ni lo añade el framework por su cuenta:
-     * init() del configurer no llama a authorizeHttpRequests.
+     * Esta cadena no declara ningún mecanismo de autenticación, y para el
+     * usuario que llega sin sesión a /oauth2/authorize no autentica a nadie:
+     * depende de la sesión que establezca la cadena de cierre.
+     *
+     * Ojo con la excepción, que no se ve leyendo este método: el propio
+     * OAuth2AuthorizationServerConfigurer.init() llama por su cuenta a
+     * http.oauth2ResourceServer(rs -> rs.jwt(...)) en cuanto .oidc(...) trae el
+     * endpoint UserInfo (verificado en el bytecode de spring-security-config
+     * 7.1.1), y Boot autoconfigura el JwtDecoder a partir del bean JWKSource.
+     * Por eso GET /userinfo con un 'Authorization: Bearer' emitido aquí SÍ
+     * responde, aunque su filtro se inserte después del AuthorizationFilter y
+     * el anyRequest().authenticated() de abajo lo cortaría sin ese bearer. No
+     * lo declaramos nosotros a propósito -sería una línea redundante que
+     * aparenta ser load-bearing-; lo que lo sostiene es
+     * FlujoCompletoIT.el_userinfo_devuelve_claims_con_un_token_emitido, que
+     * llama al endpoint anunciado con un token real y afirma los claims.
+     *
+     * Lo que sí hace esta cadena es DENEGAR, y de eso se encarga el
+     * anyRequest().authenticated() de más abajo, que no es decorativo ni lo
+     * añade el framework por su cuenta: init() del configurer no llama a
+     * authorizeHttpRequests.
      *
      * Sin esa línea, una petición anónima y bien formada a /oauth2/authorize
      * NO se deniega: el proveedor no encuentra principal y el filtro del
@@ -257,8 +274,9 @@ class SecurityConfig {
      * Ya no se declara STATELESS: el flujo de código de autorización necesita
      * una sesión de servidor entre el login y /oauth2/authorize. Esa sesión se
      * guarda en SPRING_SESSION (spring-session-jdbc, ver application.yml) y no
-     * en memoria del pod: con varias réplicas y sin sesión pegajosa, una
-     * sesión en memoria obliga a pasar otra vez por Google en cada pod.
+     * en memoria del pod: así sobrevive a los despliegues y no dependerá de
+     * sesión pegajosa el día que se pueda escalar. Hoy no se puede, y por otro
+     * motivo: el almacén de autorizaciones es de memoria (README, «Réplicas»).
      */
     @Bean
     @Order(2)

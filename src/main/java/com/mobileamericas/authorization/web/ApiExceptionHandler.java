@@ -12,23 +12,34 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 /**
  * Errores en application/problem+json (RFC 7807).
  *
- * El ResponseDto anterior metía e.getStackTrace()[0] en el cuerpo, filtrando
- * rutas de clases y números de línea a quien llamara. Aquí la traza va al log y
- * al cliente solo le llega el motivo.
+ * ALCANCE REAL, que esta fase cambió: un @RestControllerAdvice sólo alcanza lo
+ * que despacha DispatcherServlet, y desde que la fase 2 borró AuthController y
+ * MeController NO queda ningún @Controller ni @RestController en src/main. Los
+ * endpoints de OAuth y OIDC no son controladores: son filtros de la cadena de
+ * seguridad, con sus propios manejadores de error -responden el JSON de error
+ * de OAuth 2.0, no un ProblemDetail-, así que nada de lo de aquí les aplica.
+ * Lo único que este advice puede llegar a tocar hoy es BasicErrorController
+ * (/error), y por ahí no pasa ninguna excepción propia.
  *
- * Extiende {@link ResponseEntityExceptionHandler} a propósito: sin eso,
+ * Se mantiene porque es el valor por defecto correcto para cuando vuelva a
+ * haber controladores (el CRUD de aplicaciones de la fase 3) y porque los dos
+ * relanzamientos de más abajo son sutiles: si desaparece este fichero,
+ * reaparecen los dos fallos que documentan. Lo que ya NO describe la realidad
+ * -y por eso se reescribió este párrafo- es el razonamiento anterior, que
+ * hablaba de rutas públicas con parámetros obligatorios que un llamador anónimo
+ * podía usar para forzar trazas ERROR: esas rutas se fueron con la fase 1.
+ *
+ * Extiende {@link ResponseEntityExceptionHandler} a propósito, y el motivo
+ * sigue siendo válido para esos controladores futuros: sin eso,
  * {@code @ExceptionHandler(Exception.class)} de más abajo intercepta ANTES que
  * {@code ResponseStatusExceptionResolver} y {@code DefaultHandlerExceptionResolver},
- * así que una excepción de Spring MVC con su propio status —por ejemplo
- * un parámetro obligatorio ausente en una ruta pública— se convertía en 500
- * con traza en el log en vez del 400 que le corresponde. Como esas rutas son
- * públicas, cualquier llamador anónimo podía forzar trazas ERROR en el log a
- * voluntad con solo omitir el parámetro: el objetivo era mandar la traza al
- * log, no dejar que un extraño decida cuándo se escribe.
- * ResponseEntityExceptionHandler ya sabe traducir esas excepciones
- * (ServletRequestBindingException, HttpRequestMethodNotSupportedException,
- * NoResourceFoundException...) a su ProblemDetail correcto; los manejadores de
- * más abajo siguen ganando por ser más específicos.
+ * así que una excepción de Spring MVC con su propio status —por ejemplo un
+ * parámetro obligatorio ausente— se convertiría en 500 con traza en el log en
+ * vez del 400 que le corresponde. ResponseEntityExceptionHandler ya sabe
+ * traducir esas excepciones (ServletRequestBindingException,
+ * HttpRequestMethodNotSupportedException, NoResourceFoundException...) a su
+ * ProblemDetail correcto; los manejadores de más abajo siguen ganando por ser
+ * más específicos.
  */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
@@ -40,8 +51,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
      *
      * org.springframework.security.access.AccessDeniedException es la que
      * lanza un método protegido con @PreAuthorize (habilitado por
-     * @EnableMethodSecurity en SecurityConfig). Esa excepción nace DENTRO de
-     * la invocación del controlador, en el mismo hilo y la misma pila que
+     * @EnableMethodSecurity en SecurityConfig). Hoy no hay ningún método así
+     * -no hay controladores-, con lo que esta rama no se recorre; queda escrita
+     * porque el fallo que evita no se ve leyendo el código que lo provoca. Esa
+     * excepción nace DENTRO de la invocación del controlador, en el mismo hilo
+     * y la misma pila que
      * @ExceptionHandler(Exception.class); si se atrapara ahí, quedaría resuelta
      * como un ProblemDetail normal dentro del despachador, y
      * ExceptionTranslationFilter —que vive en la cadena de filtros, fuera del

@@ -12,6 +12,12 @@ import java.util.UUID;
  *
  * accessTtlSeconds puede ser null (la columna lo permite); el valor por
  * defecto del spec cuando falta lo decide el adaptador, no el dominio.
+ *
+ * 'url' no lo lee nadie hoy -ni la emisión, ni el registro de clientes, ni el
+ * validador de acceso-, y se conserva a propósito: es la columna auth_app.url
+ * (V1__esquema.sql la crea, V2__datos_iniciales.sql la siembra) y este record
+ * es el reflejo de esa fila. Si se decide que no hace falta, lo que sobra es la
+ * columna y se quitan las dos a la vez, no sólo el accessor.
  */
 public record App(
         UUID id,

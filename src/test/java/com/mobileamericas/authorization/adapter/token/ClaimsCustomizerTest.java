@@ -67,10 +67,16 @@ class ClaimsCustomizerTest {
     }
 
     /**
-     * Ruling 16: un resource server que audita quién hizo algo tiene el
-     * 'sub' -un UUID opaco- y necesitaría preguntarle a auth de quién se
-     * trata. El email es el identificador que el resto de la plataforma ya
-     * usa, así que viaja también en el access token.
+     * Ruling 16: el email es el identificador que el resto de la plataforma ya
+     * usa para saber quién hizo algo, así que viaja también en el access token.
+     *
+     * Este comentario decía que 'sub' es «un UUID opaco» y que por eso hacía
+     * falta el email. Es falso desde la tarea 6: el framework pone en 'sub' el
+     * nombre del principal, que es el email normalizado (ver ClaimsCustomizer,
+     * y FlujoCompletoIT, que lo afirma sobre un token real). El motivo de
+     * emitir 'email' sigue en pie, pero es otro: 'sub' es por contrato un
+     * identificador OPACO, y un consumidor que lo lea como una dirección de
+     * correo se apoya en un detalle de implementación de este emisor.
      */
     @Test
     void el_access_token_lleva_tambien_el_email_del_usuario() {
@@ -255,11 +261,6 @@ class ClaimsCustomizerTest {
         @Override
         public Optional<User> findByEmail(String email) {
             return Optional.ofNullable(porEmail.get(email));
-        }
-
-        @Override
-        public Optional<User> findById(UUID id) {
-            return porEmail.values().stream().filter(u -> u.id().equals(id)).findFirst();
         }
     }
 

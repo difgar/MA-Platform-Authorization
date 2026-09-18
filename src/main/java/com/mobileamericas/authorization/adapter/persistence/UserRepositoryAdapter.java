@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 @Transactional(readOnly = true)
@@ -29,10 +28,5 @@ class UserRepositoryAdapter implements UserRepository {
         // convierte 'I' en 'ı' (i sin punto) en vez de 'i', lo que rompería la
         // igualdad justo en un campo de identidad.
         return jpa.findByEmail(email.toLowerCase(Locale.ROOT)).map(DomainMapper::toDomain);
-    }
-
-    @Override
-    public Optional<User> findById(UUID id) {
-        return jpa.findById(id.toString()).map(DomainMapper::toDomain);
     }
 }

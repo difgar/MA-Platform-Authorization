@@ -90,14 +90,20 @@ class AccessGrantTest {
 
     @Test
     void una_app_desactivada_no_concede_nada() {
-        // Esta rama es hoy lo ÚNICO que para una app desactivada. La fase 1
-        // tenía además un rechazo aguas arriba, en el verificador de Google,
-        // pero solo corría en el login inicial y ya no existe: la fase 2
-        // retiró la emisión propia. Con el modelo nuevo el desfase es mayor,
-        // no menor -quien pide un token trae una sesión establecida hace rato
-        // y nadie vuelve a mirar si su app sigue activa-, así que la
-        // comprobación tiene que vivir aquí, en el dominio, donde se construye
-        // cada grant.
+        // Esta rama NO es el único freno a una app desactivada, aunque este
+        // comentario lo dijera: desde la tarea 4,
+        // RegisteredClientRepositoryAdapter devuelve null para una app con
+        // active = FALSE (RegistroDeClientesIT.una_app_desactivada_no_se_ofrece_como_cliente),
+        // y para el framework un cliente nulo es un cliente desconocido, así
+        // que /oauth2/authorize corta antes con 'invalid_client'.
+        //
+        // Sigue haciendo falta igual, y por lo mismo que entonces: es la última
+        // barrera, la que se aplica en cada construcción de grant y no sólo al
+        // pedir el código. La fase 1 tenía además un rechazo aguas arriba en el
+        // verificador de Google, que ya no existe -la fase 2 retiró la emisión
+        // propia-, y con el modelo nuevo el desfase entre el login y la emisión
+        // es mayor, no menor: quien pide un token trae una sesión establecida
+        // hace rato. Por eso la comprobación vive aquí, en el dominio.
         var appDesactivada = new App(APP_ID, "trafficflow", "https://tf.example", false, List.of(), List.of(), null);
         var usuario = usuarioCon(Set.of(Permission.parse("*:*")));
 
