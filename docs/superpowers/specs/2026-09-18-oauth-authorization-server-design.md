@@ -191,7 +191,18 @@ distinto de los `blob` del authorization server, que resultaron ser de caractere
 y por eso admiten `text`. El `ENGINE=InnoDB ROW_FORMAT=DYNAMIC` sí es descartable.
 
 **Decisión: `SPRING_SESSION_ATTRIBUTES` se crea en una migración por motor**, con
-`classpath:db/migration/{vendor}`. Todo lo demás sigue en el juego compartido.
+`classpath:db/migration-vendor/{vendor}`. Todo lo demás sigue en el juego
+compartido.
+
+> **Corregido durante la ejecución (tarea 2).** Esta sección decía
+> `classpath:db/migration/{vendor}`, que es imposible: el escáner de classpath de
+> Flyway recorre `db/migration` recursivamente y sin filtro por motor, así que
+> anidar las carpetas de motor ahí dentro hace que vea las dos `V4` a la vez y
+> falle en **ambos** motores por igual («Found more than one migration with
+> version 4»). Verificado en el bytecode de `FileSystemClassPathLocationScanner`.
+> Las migraciones por motor viven en un directorio hermano,
+> `db/migration-vendor/{vendor}`, y `spring.flyway.locations` lista las dos
+> ubicaciones.
 
 Esto contradice una regla de la fase 1 —un único juego de migraciones, sin
 carpetas por motor— y la contradice a sabiendas. La regla existía porque **dos
