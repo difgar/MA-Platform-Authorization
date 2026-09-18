@@ -81,9 +81,22 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
     /**
      * Autorización para el resource server: roles y permisos ya expandidos
      * por AccessGrant.of -los comodines no viajan nunca en el token-, más el
-     * email como identificador legible: un resource server que audita quién
-     * hizo algo tiene el 'sub', que es un UUID opaco, y tendría que consultar
-     * a auth para traducirlo.
+     * email.
+     *
+     * 'email' y 'sub' llevan HOY el mismo valor, no dos distintos: el
+     * framework pone en 'sub' el nombre del principal, que es el email
+     * normalizado que fija UsuarioOidcService (comprobado sobre un token real
+     * emitido, en FlujoCompletoIT; antes aquí decía que 'sub' era un UUID
+     * opaco, y era falso).
+     *
+     * Aun coincidiendo, el claim no sobra, y la razón no es la comodidad:
+     * 'sub' es por contrato un identificador OPACO de sujeto, y un consumidor
+     * que lo lea como una dirección de correo se estaría apoyando en un
+     * detalle de implementación de este emisor. 'email' es el claim que SÍ
+     * promete ser una dirección, y es el que un resource server debe leer
+     * para mostrar o registrar quién hizo algo. Si algún día 'sub' pasa a ser
+     * el UUID de auth_user, quien use 'email' sigue funcionando y quien use
+     * 'sub' se rompe -en silencio, porque el token seguiría validando-.
      */
     private void personalizarAccessToken(JwtEncodingContext ctx, String email, User usuario) {
         var app = apps.findByName(ctx.getRegisteredClient().getClientId()).orElseThrow();

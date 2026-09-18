@@ -27,11 +27,13 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
 
@@ -76,6 +78,11 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         assertThat(claims.get("sub")).isEqualTo("usuario1@pendiente.local");
         assertThat(claims.get("email")).isEqualTo("usuario1@pendiente.local");
         assertThat(claims.get("roles")).asInstanceOf(LIST).containsExactly("admin");
+        // "scope mínimo" es una restricción global de la fase, y este es el
+        // único sitio donde se puede comprobar sobre un token ya firmado:
+        // 'openid' y nada más. Los permisos viajan en 'permissions', no
+        // inflando el scope.
+        assertThat(claims.get("scope")).isEqualTo(List.of("openid"));
         // admin@admin es el comodín '*:*'. Que aquí lleguen los 12 permisos
         // concretos de la app (3 recursos x 4 verbos) y NINGÚN comodín es lo
         // que demuestra que AccessGrant expandió antes de firmar: un resource
@@ -95,6 +102,30 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         // manda avatar: un claim AUSENTE, no uno a null, que induciría a creer
         // que el dato se conoce y está vacío.
         assertThat(identidad).doesNotContainKeys("name", "picture");
+    }
+
+    /**
+     * La otra rama de 'name', la que del_login_al_token_con_pkce no puede ver:
+     * usuario1 y usuario2 tienen full_name NULL en el seed, así que un
+     * customizador que NUNCA emitiera 'name' pasaría igual con sólo la prueba
+     * de la ausencia.
+     *
+     * El nombre afirmado es el de auth_user y NO el que manda el proveedor
+     * -GoogleSimulado devuelve en userinfo la parte local del email, aquí
+     * "connombre"-, así que esta aserción distingue además de dónde sale el
+     * claim: de nuestra base de datos, no de Google.
+     *
+     * Fila propia con su propio email, como hace AccesoAlClienteIT: las
+     * pruebas de esta clase comparten contenedor, y así ninguna pisa a otra ni
+     * depende del orden en que JUnit las ejecute.
+     */
+    @Test
+    void el_id_token_trae_el_nombre_cuando_el_usuario_lo_tiene() {
+        insertarUsuarioConNombreYRolEnAdmin("connombre@pendiente.local", "Ada Lovelace");
+
+        var tokens = tokensDe(iniciarSesionCon("connombre@pendiente.local"), "admin");
+
+        assertThat(decodificar(tokens.get("id_token")).get("name")).isEqualTo("Ada Lovelace");
     }
 
     @Test
@@ -128,6 +159,12 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
 
         assertThatThrownBy(() -> decoderDeAdmin.decode(token))
                 .isInstanceOf(JwtValidationException.class);
+        // El control positivo, sin el cual un predicado invertido dejaría esta
+        // prueba en verde: el mismo decodificador SÍ acepta un token de admin.
+        // Mismo usuario, que tiene rol en las dos apps, para que lo único que
+        // cambie entre los dos tokens sea la audiencia.
+        assertThatNoException().isThrownBy(
+                () -> decoderDeAdmin.decode(tokenPara("usuario2@pendiente.local", "admin")));
     }
 
     @Test
@@ -169,11 +206,38 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
                         loc -> assertThat(loc.toString()).doesNotContain("evil.example"));
     }
 
+    /**
+     * El rol es admin@admin (el comodín '*:*'): sin un rol real en la app, el
+     * validador de /authorize rechazaría el login antes de emitir nada y la
+     * prueba fallaría por un motivo que no tiene que ver con el nombre.
+     */
+    private void insertarUsuarioConNombreYRolEnAdmin(String email, String nombre) {
+        var id = UUID.randomUUID().toString();
+        jdbc.sql("""
+                        INSERT INTO auth_user (id, email, full_name, active, created_at, updated_at)
+                        VALUES (:id, :email, :nombre, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """)
+                .param("id", id)
+                .param("email", email)
+                .param("nombre", nombre)
+                .update();
+        jdbc.sql("""
+                        INSERT INTO auth_user_role (user_id, role_id)
+                        VALUES (:userId, 'c0000000-0000-4000-8000-000000000001')
+                        """)
+                .param("userId", id)
+                .update();
+    }
+
     // --- PKCE ------------------------------------------------------------
 
     /**
-     * 32 bytes de entropía en base64url sin relleno: el máximo que admite el
-     * RFC 7636 para el verifier, y el mismo formato que usa el framework.
+     * 32 bytes de entropía en base64url sin relleno, es decir 43 caracteres:
+     * el MÍNIMO que admite el RFC 7636 (43-128), no el máximo. El generador
+     * de Spring usa 96 bytes / 128 caracteres; lo que comparten es el
+     * formato, no la longitud, y 43 caracteres aleatorios bastan de sobra
+     * para lo que esta prueba comprueba.
+     *
      * Uno por prueba, no una constante compartida: dos canjes con el mismo
      * verifier no distinguirían "el reto se comprobó" de "el reto da igual".
      */
