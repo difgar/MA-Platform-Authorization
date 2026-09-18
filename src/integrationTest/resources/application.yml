@@ -57,7 +57,16 @@ spring:
 
 authorization:
   jwt:
-    issuer: https://auth.mobile-americas.com
+    # Sin 'issuer': la propiedad se retiró en la tarea 9 por huérfana. El 'iss'
+    # de los tokens lo fija spring.security.oauth2.authorizationserver.issuer,
+    # que este fichero NO declara a propósito: la suite corre en un puerto
+    # aleatorio, así que el emisor tiene que seguir derivándose de la petición
+    # para que el documento de descubrimiento apunte al servidor de la prueba.
+    #
+    # Consecuencia que conviene tener presente al leer FlujoCompletoIT: el pin
+    # del emisor de producción (application.yml) NO lo cubre ninguna prueba de
+    # esta suite. No puede: aquí el host de la petición ES el del servidor.
+    #
     # SOLO PARA TESTS: 'test-keys/active.jwk' está deliberadamente commiteado
     # en el repositorio. No es la clave de ningún entorno real; sirve
     # únicamente para que el contexto de Spring arranque en las pruebas
@@ -66,7 +75,7 @@ authorization:
       - classpath:test-keys/active.jwk
   cors:
     # CorsProperties la lee vía @ConfigurationProperties (como JwtProperties.
-    # key-locations, cuatro líneas más arriba), que admite tanto esta secuencia
+    # key-locations, justo aquí arriba), que admite tanto esta secuencia
     # YAML como una variable de entorno separada por comas en Kubernetes. Dos
     # orígenes a propósito, no uno: con un solo valor ninguna prueba distingue
     # "la lista se separó bien" de "no se separó y quedó un único patrón

@@ -18,7 +18,35 @@ data:
   # tumbaba el primer despliegue. baseline-on-migrate NO se activa a propósito
   # (ver README.md, sección Despliegue): saltaría V1 en silencio y dejaría la
   # app corriendo contra las tablas viejas.
-  DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_auth"
+  #
+  # Los parámetros de zona NO son cosmética. Los TIMESTAMP(6) de V3__oauth.sql
+  # (caducidad del código, del access token, del ID token, de la sesión) no
+  # llevan zona: el driver de MySQL los convierte usando la zona de la sesión de
+  # base de datos, que por defecto es la del servidor. Con la JVM en UTC y el
+  # servidor en otra zona, lo que se escribe y lo que se lee se desplazan entre
+  # sí y las caducidades dejan de ser las que se calcularon.
+  #   preserveInstants=true               conserva el instante en las conversiones
+  #   connectionTimeZone=UTC              la zona con la que convierte el driver
+  #   forceConnectionTimeZoneToSession    se la impone también a la sesión MySQL
+  # La otra mitad del anclaje son TZ y -Duser.timezone=UTC, más abajo. Las dos
+  # mitades hacen falta: ni la JVM sola ni la conexión sola bastan.
+  DB_MA_PLATFORM_URL: "jdbc:mysql://ma-platform-db.private.mobile-americas.com:3306/ma_auth?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+  # El 'iss' de los tokens y la base del documento de descubrimiento. Sin esta
+  # variable, Spring Authorization Server lo deriva de la petición entrante y
+  # detrás del ingress eso es http://<ip-del-pod>:8081/authorization-api: todo
+  # consumidor que valide el emisor rechazaría los tokens. Incluye el
+  # context-path porque los endpoints cuelgan de él.
+  AUTH_ISSUER: "https://auth.mobile-americas.com/authorization-api"
+  # Los orígenes desde los que el navegador canjea el código con
+  # POST /oauth2/token. Lista exacta, no el comodín que trae application.yml por
+  # defecto: con Access-Control-Allow-Credentials: true, *.mobile-americas.com
+  # es cualquier subdominio del dominio, presente o futuro.
+  #
+  # Una aplicación nueva necesita DOS cosas, no una: su fila en auth_app con
+  # redirect_uris, y su origen AQUÍ. Olvidar la segunda no deja rastro en
+  # ningún log de este servidor -el navegador corta la petición antes de
+  # enviarla-, y es el fallo más caro de diagnosticar de todo el rediseño.
+  CORS_ALLOWED_ORIGINS: "https://admin.mobile-americas.com,https://fgf.mobile-americas.com"
 ---
 apiVersion: "apps/v1"
 kind: "Deployment"
@@ -63,13 +91,50 @@ spec:
               # sin limits.cpu a proposito: provocaria throttling en el arranque
               memory: "490Mi"
           env:
+            # -Duser.timezone=UTC: la mitad de JVM del anclaje a UTC que hace
+            # correctos los TIMESTAMP(6) sin zona de V3__oauth.sql. La otra
+            # mitad son los parámetros de zona de DB_MA_PLATFORM_URL (arriba).
             - name: "JAVA_TOOL_OPTIONS"
-              value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25"
+              value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25 -Duser.timezone=UTC"
+            # TZ además de -Duser.timezone: fija la zona del CONTENEDOR, que es
+            # de donde la JVM tomaría la suya si alguien quitara el -D, y la que
+            # ven las marcas de tiempo de los logs. Con las dos, la zona deja de
+            # depender de la imagen base ni del nodo.
+            - name: "TZ"
+              value: "UTC"
             - name: "JWT_KEY_LOCATIONS"
               value: "file:/etc/ma-auth/keys/active.jwk"
-            # ADMIN_CLIENT_ID, FGF_CLIENT_ID y AUTH_SECRET ya no existen: el
-            # mapeo cliente de Google -> app vive en auth_app.google_client_id
-            # (ver V2__datos_iniciales.sql), no en variables de entorno.
+            # ADMIN_CLIENT_ID, FGF_CLIENT_ID y AUTH_SECRET ya no existen. Desde
+            # la fase 2 tampoco existe auth_app.google_client_id (la borró
+            # V3__oauth.sql): hay UN SOLO cliente de Google para todo el
+            # servicio, el de auth, y la aplicación se deduce del client_id
+            # OAuth de la petición a /oauth2/authorize, no del 'aud' del token
+            # de Google. De ahí las dos variables de abajo.
+            #
+            # Paso manual fuera de este repo: crear el Secret con el cliente
+            # OAuth Web de Google Cloud, p. ej.
+            #   kubectl create secret generic ma-auth-google-client \
+            #     --from-literal=client-id=... --from-literal=client-secret=...
+            - name: "GOOGLE_CLIENT_ID"
+              valueFrom:
+                secretKeyRef:
+                  key: "client-id"
+                  name: "ma-auth-google-client"
+            - name: "GOOGLE_CLIENT_SECRET"
+              valueFrom:
+                secretKeyRef:
+                  key: "client-secret"
+                  name: "ma-auth-google-client"
+            - name: "AUTH_ISSUER"
+              valueFrom:
+                configMapKeyRef:
+                  key: "AUTH_ISSUER"
+                  name: "ma-authorization-prod-deployment-config"
+            - name: "CORS_ALLOWED_ORIGINS"
+              valueFrom:
+                configMapKeyRef:
+                  key: "CORS_ALLOWED_ORIGINS"
+                  name: "ma-authorization-prod-deployment-config"
             - name: "env"
               valueFrom:
                 configMapKeyRef:

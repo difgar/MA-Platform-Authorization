@@ -1,37 +1,340 @@
 # MA-Platform-Authorization
 
-Servicio de autorización de la plataforma: intercambia un ID token de Google
-por un access token (15 min) y un refresh token (12 h) propios, en cookies
-`HttpOnly`, y expone el JWKS para que otros servicios verifiquen esos tokens
-sin llamar de vuelta a este servicio.
+Servidor de autorización OAuth 2.1 / OpenID Connect de la plataforma, sobre
+**Spring Authorization Server**. La identidad la pone Google (login federado con
+**un solo** cliente de Google para todo el servicio); quién puede entrar en cada
+panel y con qué permisos lo decide este servicio, contra `auth_user`,
+`auth_role` y `auth_permission`.
+
+Cada aplicación (panel) es un **cliente OAuth público** registrado en `auth_app`
+y obtiene sus tokens por **Authorization Code + PKCE**. Los consumidores
+(APIs) verifican esos tokens con el JWKS, sin llamar de vuelta a este servicio.
 
 Spring Boot 4.1.1, Java 25, arquitectura de puertos y adaptadores. Sin
 frameworks web en `domain`/`application` (ver `docs/superpowers/specs/`).
 
 ## Arrancar en local
 
-Requiere una base MySQL local (o apuntar `spring.datasource.url` a otra) y
-crea el esquema por Flyway al arrancar; no hace falta ejecutar nada a mano.
+Requiere **PostgreSQL** en `localhost:5432`, base `ma_auth`, usuario y contraseña
+`ma_auth`. La base debe estar **vacía** la primera vez: Flyway aborta ante un
+esquema no vacío sin tabla de historia, para no correr sobre tablas ajenas.
+El esquema lo crea Flyway al arrancar; no hay que ejecutar nada a mano.
 
 ```bash
 SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun
+curl -s localhost:18081/authorization-api/.well-known/openid-configuration
 ```
 
 El perfil `dev` (`src/main/resources/application-dev.yml`) fija:
 
-- `jdbc:mysql://localhost:3306/ma_platform_auth`, usuario/clave
-  `ma-platform-user`/`ma-platform-password`.
-- Orígenes CORS de `localhost:3000` y `localhost:5173`.
+- La API en `http://localhost:18081/authorization-api` y management en
+  `http://localhost:28081` (en los demás perfiles es al revés: 8081 y 18081).
+- El emisor local, `http://localhost:18081/authorization-api`.
+- Orígenes CORS `http://localhost:3000` y `http://localhost:5173` (el de por
+  defecto de Vite, que es el que usa `MA-Platform-UI`).
 - La clave de firma de `src/main/resources/dev-keys/active.jwk`.
-
-La app queda en `http://localhost:8081/authorization-api` y el puerto de
-management (salud, `/actuator/info`) en `http://localhost:18081`.
+- Un `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` de relleno, **sólo para que el
+  contexto arranque**. Con ellos se puede mirar el documento de descubrimiento,
+  pero **no se puede iniciar sesión**: Google rechaza el cliente. Para el flujo
+  completo en local hay que exportar los del cliente OAuth Web real, que además
+  necesita `http://localhost:18081/authorization-api/login/oauth2/code/google`
+  entre sus URI de redirección autorizadas.
 
 Sin `SPRING_PROFILES_ACTIVE=dev`, el perfil por defecto exige
 `DB_MA_PLATFORM_URL`, `DB_MA_PLATFORM_USER`, `DB_MA_PLATFORM_PASSWORD`,
-`JWT_KEY_LOCATIONS` y `CORS_ALLOWED_ORIGINS` (o sus equivalentes en
-`application.yml`) y **falla al arrancar si falta alguno**: es intencional,
-no un bug — mejor un pod que no arranca que uno que arranca mal configurado.
+`GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`, y **falla al arrancar si falta
+alguno**: es intencional, no un bug — mejor un pod que no arranca que uno que
+arranca mal configurado. `AUTH_ISSUER`, `JWT_KEY_LOCATIONS` y
+`CORS_ALLOWED_ORIGINS` sí tienen valor por defecto (el de producción) en
+`application.yml`.
+
+## Ejecutar las pruebas
+
+```bash
+./gradlew test              # unitarias: dominio, casos de uso, capa web — sin Spring, sin BD
+./gradlew integrationTest   # la suite completa dos veces: MySQL 8.4 y PostgreSQL 17 (Testcontainers)
+./gradlew check             # ambas
+```
+
+`integrationTest` necesita un daemon de Docker disponible (Testcontainers).
+No hay dependencia de red hacia Google: el proveedor OIDC se simula en el propio
+test (`GoogleSimulado`), y las claves de prueba están en el repositorio.
+
+## Endpoints
+
+Todo cuelga del context path `/authorization-api`, salvo `/actuator/**`, que vive
+en el puerto de management. La lista viva y autoritativa es el documento de
+descubrimiento; esto es lo que hay hoy:
+
+```
+Descubrimiento
+  GET  /.well-known/openid-configuration   metadatos OIDC  ← empieza por aquí
+  GET  /oauth2/jwks                        claves públicas ← lo que consumen las APIs
+
+Flujo de la aplicación (Authorization Code + PKCE)
+  GET  /oauth2/authorize                   pide el código (navegación, no fetch)
+  POST /oauth2/token                       canjea código + code_verifier ← CORS
+  GET  /userinfo                           claims del usuario con el access token
+
+Login federado con Google (lo usa el navegador, no la aplicación)
+  GET  /oauth2/authorization/google        arranca el login
+  GET  /login/oauth2/code/google           vuelta de Google
+
+Logout
+  GET  el 'end_session_endpoint' del descubrimiento (hoy /connect/logout)
+
+Management  (puerto de management, no expuesto al exterior)
+  /actuator/health/{liveness,readiness}
+  /actuator/info
+```
+
+Lo que **ya no existe** (era el servicio de la fase 1, con emisión propia y
+cookies): `POST /v1/auth/google`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`,
+`GET /v1/auth/me` y `GET /.well-known/jwks.json`. El JWKS se sirve ahora en
+`/oauth2/jwks`. Tampoco hay cookies `ma_access`/`ma_refresh` ni
+`CookieBearerTokenResolver`: el token viaja en la cabecera `Authorization`.
+
+## Integrar una aplicación de navegador (SPA)
+
+El módulo **no** habla con `/v1/auth/...`; hace el flujo estándar:
+
+1. Genera `code_verifier` y `code_challenge` (S256) y navega —no `fetch`— a
+   `/oauth2/authorize?response_type=code&client_id=<nombre de la app>&redirect_uri=…&scope=openid&code_challenge=…&code_challenge_method=S256&state=…`.
+2. Si no hay sesión SSO, el servicio manda al usuario a Google y vuelve solo.
+3. Vuelve a `redirect_uri` con `?code=…&state=…`.
+4. La SPA hace `POST /oauth2/token` con `grant_type=authorization_code`, el
+   `code`, el `code_verifier` y su `client_id`. **Esta petición es cross-origin**
+   (ver «Dar de alta una aplicación nueva»).
+
+Cuatro cosas que ahorran una tarde cada una:
+
+- **El access token va en memoria del módulo.** Nunca en `localStorage` ni en
+  `sessionStorage`: ahí lo lee cualquier script que acabe en la página.
+- **No hay refresh token.** Los clientes son públicos, y un cliente público no
+  recibe refresh token aunque declare el *grant* (verificado). Renovar es
+  **volver a pasar por `/oauth2/authorize`**: una redirección, que con la sesión
+  SSO viva es instantánea y sin pantalla, pero es una redirección. Si la
+  aplicación recarga, el token se pierde y hay que repetir el flujo.
+- **El access token dura 2 h por defecto**, y es configurable por cliente en
+  `auth_app.access_ttl_seconds`. Bajarlo es una decisión por panel.
+- **Cerrar sesión es el `end_session_endpoint`**, no borrar el token de memoria.
+  Requiere `id_token_hint` y `client_id`, y el `post_logout_redirect_uri` tiene
+  que estar en `auth_app.post_logout_redirect_uris` o se rechaza — es una lista
+  blanca, no una sugerencia.
+
+## Configurar un consumidor (resource server)
+
+Un consumidor de servicio a servicio, que recibe `Authorization: Bearer …`, no
+necesita escribir código: sólo configuración de Spring Security.
+
+```yaml
+spring.security.oauth2.resourceserver.jwt:
+  jwk-set-uri: https://auth.mobile-americas.com/authorization-api/oauth2/jwks
+  audiences: trafficflow            # sin esto, el aud NO se comprueba
+  authorities-claim-name: permissions
+  authority-prefix: ""
+```
+
+Las cuatro propiedades son necesarias, no sólo la primera:
+
+- **`jwk-set-uri`**: dónde están las claves públicas. (Alternativa:
+  `issuer-uri: https://auth.mobile-americas.com/authorization-api`, que descubre
+  el JWKS solo y **además valida el `iss`**. Es la opción más estricta; exige que
+  el consumidor alcance el documento de descubrimiento al arrancar.)
+- **`audiences`**: sin ella, Spring Boot no instala el validador de `aud`, así
+  que **un token emitido para otra aplicación se acepta igual**. Ese aislamiento
+  entre aplicaciones es lo que este servicio garantiza y lo que prueba
+  `FlujoCompletoIT`; una configuración de consumidor sin `audiences` lo anula
+  del lado del cliente, en silencio y sin que nada falle.
+- **`authorities-claim-name: permissions`** y **`authority-prefix: ""`**: por
+  defecto un resource server lee las autoridades del claim `scope`/`scp` con el
+  prefijo `SCOPE_`. Los tokens de este servicio llevan los permisos en
+  `permissions`, concretos y sin prefijo de aplicación. Sin estas dos,
+  `hasAuthority('campanas:editar')` no encuentra nunca esa autoridad, aunque el
+  token sea válido y esté bien firmado.
+
+### Lo que trae el token
+
+Access token:
+
+| claim | qué es |
+|---|---|
+| `iss` | `https://auth.mobile-americas.com/authorization-api` (fijado, no derivado de la petición) |
+| `sub` | **el email del usuario, en minúsculas** — ver aviso abajo |
+| `aud` | el `client_id`, que es el nombre de la aplicación en `auth_app` |
+| `email` | el mismo email; es el claim que promete ser una dirección |
+| `roles` | nombres de rol del usuario **en esa aplicación** |
+| `permissions` | permisos ya expandidos (`usuarios:leer`, …); los comodines nunca viajan |
+| `scope` | `openid`, y nada más: los permisos no son *scopes* |
+
+El ID token lleva `email`, y `name` y `picture` si Google los da. **No lleva
+`roles` ni `permissions`**: es un documento de identidad que el navegador puede
+guardar y que sobrevive horas a un cambio de rol.
+
+> **`sub` es el email, no un identificador opaco.** Es contraintuitivo: por
+> contrato `sub` es opaco, y aquí resulta ser una dirección de correo. La
+> consecuencia práctica es que **si a un usuario se le cambia el correo, su `sub`
+> cambia**, y un consumidor que lo haya guardado como clave ajena se queda con
+> una referencia rota sin que nada lo avise. Guarda `email` si quieres el correo,
+> y no uses ninguno de los dos como clave estable. El identificador estable
+> (`auth_user.id`) **no viaja hoy en el token**; meterlo es una decisión de la
+> fase 3, no un parche.
+
+## Dar de alta una aplicación nueva
+
+Hacen falta **dos** cosas, y olvidar la segunda es el fallo más caro de
+diagnosticar de todo el servicio:
+
+1. **Su fila en `auth_app`**, con `redirect_uris` (la URL de callback de la SPA),
+   `post_logout_redirect_uris` y, si quiere otro, `access_ttl_seconds`. Hoy se
+   hace por migración; la fase 3 trae el CRUD. El `name` de esa fila **es** el
+   `client_id`.
+2. **Su origen en `authorization.cors.allowed-origins`**
+   (`CORS_ALLOWED_ORIGINS`, ver el ConfigMap de `kubernetes/deployment.yaml`).
+
+Por qué la segunda no se puede deducir de la primera: `redirect_uri` gobierna
+una **navegación**, y `POST /oauth2/token` es una **llamada cross-origin** desde
+la SPA. Si su origen no está en la lista, **el navegador corta la petición antes
+de enviarla**: no llega nada al servidor, no se registra nada en ningún log de
+este servicio, y el único rastro está en la consola del navegador de quien lo
+sufre. El síntoma es «el login se queda a medias» y la causa está en otro sitio.
+
+El validador de orígenes exige al menos dos etiquetas después de un `*`
+(`https://*.mobile-americas.com` pasa, `https://*.com` no) y **falla al
+arrancar**, no en el primer preflight: una lista mal puesta se ve en el log de
+arranque del pod.
+
+## Sesión SSO
+
+La sesión que sostiene el SSO entre paneles vive en la base de datos
+(`SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES`, Spring Session JDBC), no en
+memoria del pod: con varias réplicas y sin sesión pegajosa, en memoria cada pod
+obligaría a volver a pasar por Google. Caduca a las **12 h de inactividad**,
+deslizante.
+
+**Lo único que borra las filas caducadas** es la tarea programada de Spring
+Session (`spring.session.jdbc.cleanup-cron`, por defecto cada minuto). Está
+desactivada **sólo** en `src/integrationTest/resources/application.yml`, y esa
+desactivación no puede escaparse de las pruebas por esa vía; lo que sí la
+escaparía es un `SPRING_SESSION_JDBC_CLEANUP_CRON` en un ConfigMap. No lo
+pongas.
+
+Esa expiración no la cubre ninguna prueba (12 h no se simulan). Comprobarlo a
+mano, contra la base del entorno:
+
+```sql
+-- 1. Elegir una sesión viva y quedarse con su SESSION_ID. EXPIRY_TIME va en
+--    milisegundos desde epoch (UTC), no es un timestamp.
+SELECT SESSION_ID, EXPIRY_TIME FROM SPRING_SESSION;
+
+-- 2. Envejecerla a mano, con el SESSION_ID del paso 1, y esperar poco más de
+--    un minuto (el cron por defecto corre en punto de cada minuto).
+UPDATE SPRING_SESSION SET EXPIRY_TIME = 0 WHERE SESSION_ID = '<el del paso 1>';
+
+-- 3. Debe devolver 0: la fila se ha ido, y con ella sus atributos
+--    (SPRING_SESSION_ATTRIBUTES tiene ON DELETE CASCADE).
+SELECT COUNT(*) FROM SPRING_SESSION WHERE EXPIRY_TIME = 0;
+```
+
+Si el paso 3 no baja a cero, la limpieza no está corriendo y `SPRING_SESSION`
+crece sin límite. (La consulta es la misma en MySQL y en PostgreSQL: el esquema
+de esa tabla es común a los dos.)
+
+> `oauth2_authorization` (los códigos y tokens emitidos) **no tiene limpieza
+> automática**: `JdbcOAuth2AuthorizationService` no borra las entradas caducadas.
+> Crece con cada emisión. No es urgente al volumen actual, pero hay que saberlo
+> antes de que lo sea.
+
+## Qué ve quien no puede entrar
+
+Decisión tomada, no efecto colateral: una persona que se autentica en Google
+pero **no está dada de alta** (o está de baja, o Google no da su email como
+verificado) recibe un **401 con un JSON** en formato de error de OAuth 2.0
+(`RespuestaDeLoginFallido`), y lo ve crudo en el navegador.
+
+Se acepta así a propósito. Este servicio **no sirve HTML**, y la alternativa
+—redirigir a una página del panel con el motivo en un parámetro— exige registrar
+esa URL en algún sitio, porque si no es un *redirect abierto*: el mismo agujero
+que el logout ya cierra con `post_logout_redirect_uris`. Poner ese registro para
+una pantalla de error no compensa mientras los usuarios los da de alta un
+administrador y el rechazo es raro. El motivo concreto viaja en
+`error_description`, así que quien lo reciba puede decir por qué.
+
+Si algún día se cambia de opinión, el destino tiene que salir de una lista
+blanca, no de un parámetro de la petición.
+
+## Despliegue
+
+`Dockerfile`, `kubernetes/deployment.yaml` y `cloudbuild.yaml` en la raíz del
+repo. Puntos que importa no olvidar:
+
+- El `Service` que enruta a este pod vive en `MA-Platform-config`, no en este
+  repositorio, y ya apunta a `8081`/`18081`. Este repo sólo tiene que seguir
+  escuchando ahí (`server.port: ${SERVER_PORT:8081}` en `application.yml`).
+- **El emisor se fija a mano** (`AUTH_ISSUER`, ConfigMap). Sin él, Spring
+  Authorization Server lo deriva de la petición entrante, y detrás del ingress
+  eso es `http://<ip-del-pod>:8081/authorization-api`: los tokens saldrían con un
+  `iss` que ningún consumidor que lo valide acepta, y el documento de
+  descubrimiento anunciaría endpoints inalcanzables. Incluye el context path.
+- **El ingress tiene que reenviar `X-Forwarded-Proto` y el `Host` original.** La
+  aplicación los respeta (`server.forward-headers-strategy: framework`), y de
+  ellos sale el `redirect_uri` que se le manda a Google. Si llegan mal, Google
+  rechaza el login por `redirect_uri_mismatch`.
+- **UTC en los dos extremos.** `TZ=UTC` y `-Duser.timezone=UTC` en
+  `JAVA_TOOL_OPTIONS`, **y** `?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`
+  en la URL de MySQL. Los `TIMESTAMP(6)` del esquema no llevan zona (ver la
+  cabecera de `V3__oauth.sql`): sin las dos mitades, lo que se escribe y lo que
+  se lee se desplazan y las caducidades dejan de ser las calculadas.
+- **Nada debe sobrescribir `SPRING_FLYWAY_LOCATIONS`** con un solo valor. Son
+  dos ubicaciones (`classpath:db/migration` y
+  `classpath:db/migration-vendor/{vendor}`), y con una sola no se aplicaría `V4`:
+  `SPRING_SESSION_ATTRIBUTES` no existiría y el servicio arrancaría bien **hasta
+  el primer login**.
+- La clave de firma se monta desde un `Secret` de Kubernetes
+  (`ma-auth-jwt-keys`) como volumen, sembrado desde Secret Manager en Cloud
+  Build — el mismo patrón que `MA-MtSender`, no el driver CSI de Secret Manager.
+- El cliente de Google viene de otro `Secret` (`ma-auth-google-client`, claves
+  `client-id` y `client-secret`). **Uno solo para todo el servicio**, no uno por
+  aplicación: la aplicación se deduce del `client_id` OAuth de la petición, no
+  del `aud` del token de Google. `auth_app.google_client_id` **ya no existe**;
+  la borró `V3__oauth.sql`.
+- El esquema apuntado por `DB_MA_PLATFORM_URL` (hoy `ma_auth`) debe ser **nuevo y
+  estar vacío**. Flyway detecta un esquema no vacío sin `flyway_schema_history` y
+  aborta el arranque en vez de aplicarle `V1__esquema.sql` encima: el primer
+  despliegue apuntó por error a `ma_platform_auth` (el esquema del servicio
+  antiguo, del que además sale el volcado de `V2__datos_iniciales.sql`) y el pod
+  nunca llegó a estar listo. **No se corrige con
+  `spring.flyway.baseline-on-migrate: true`**: eso saltaría `V1` en silencio y
+  dejaría la app corriendo contra las tablas del servicio viejo — falla abierto
+  donde hoy falla cerrado. En MySQL, crearlo con `utf8mb4` no basta por sí solo:
+  sigue teniendo que ser un esquema nuevo.
+- `cloudbuild.yaml` **no ejecuta tests** (Testcontainers necesitaría Docker
+  dentro de Docker). No es una puerta de calidad: compila y despliega lo que le
+  den. La suite completa se ejecuta en local antes de etiquetar.
+
+### Pasos manuales, fuera de este repositorio
+
+Ningún commit los resuelve:
+
+1. **Un único client ID de OAuth Web en Google Cloud**, con
+   `https://auth.mobile-americas.com/authorization-api/login/oauth2/code/google`
+   entre sus URI de redirección autorizadas (la ruta **incluye el context path**;
+   es la URL que construye Spring, no una que se elija). Su id y su secreto, en
+   el `Secret` `ma-auth-google-client`.
+2. **Generar el par de claves de firma** y crear el `Secret` `ma-auth-jwt-keys`
+   (`kubectl create secret generic ma-auth-jwt-keys --from-file=active.jwk=./active.jwk`),
+   sembrado desde Secret Manager.
+3. **Confirmar los `redirect_uris` y `post_logout_redirect_uris` reales** de cada
+   aplicación en `auth_app`: la migración deja los previstos, que hay que
+   verificar contra el despliegue real de cada panel.
+4. **Poner los emails reales** en `auth_user`: `V2__datos_iniciales.sql` siembra
+   `usuario1@pendiente.local` y `usuario2@pendiente.local` a propósito, y con
+   esos nadie puede entrar — el login compara el email que da Google con esta
+   tabla.
+5. **Revisar el TTL por cliente**: 2 h por defecto; bajarlo donde haga falta.
+6. **Crear el esquema** apuntado por `DB_MA_PLATFORM_URL`, nuevo y vacío.
+7. Crear el repositorio de Artifact Registry y reapuntar los *triggers* de Cloud
+   Build.
 
 ## Generar una clave de firma
 
@@ -48,159 +351,12 @@ System.out.println(clave.toJSONString());
 
 El JSON resultante es el contenido completo del fichero (incluida la parte
 privada: `d`, `p`, `q`...). En cualquier entorno que no sea `dev`, ese fichero
-**no se commitea**: se crea como Secret de Kubernetes y se monta como volumen
-(ver más abajo), nunca como variable de entorno ni en el código.
+**no se commitea**: se crea como Secret de Kubernetes y se monta como volumen,
+nunca como variable de entorno ni en el código.
+`authorization.jwt.key-locations` admite varias claves: durante una rotación se
+declaran dos, y la primera es la que firma.
 
-`src/main/resources/dev-keys/active.jwk` es la única excepción, y solo porque
-es de desarrollo puro: no protege nada real, nunca sale del perfil `dev`, y en
-cualquier otro perfil `JWT_KEY_LOCATIONS` la sustituye por la ruta del Secret
-montado en el pod.
-
-## Ejecutar las pruebas
-
-```bash
-./gradlew test              # unitarias: dominio, casos de uso, capa web — sin Spring, sin BD
-./gradlew integrationTest   # la suite completa dos veces: MySQL 8.4 y PostgreSQL 17 (Testcontainers)
-./gradlew check             # ambas
-```
-
-`integrationTest` necesita un daemon de Docker disponible (Testcontainers).
-No hay dependencia de red hacia Google: las claves de prueba se generan en el
-propio test.
-
-## Endpoints
-
-```
-Público
-  POST /v1/auth/google            Google ID token → cookies + 204
-  POST /v1/auth/refresh           rotación
-  POST /v1/auth/logout            revoca la familia de refresh
-  GET  /.well-known/jwks.json     claves públicas ← lo que consumen los clientes
-
-Autenticado
-  GET  /v1/auth/me                identidad, roles y permisos de la app del token
-
-Administración  (Fase 2, aún no implementado en este repo)
-  /v1/admin/apps          GET POST PUT DELETE
-  /v1/admin/permissions   GET POST PUT DELETE
-  /v1/admin/roles         GET POST PUT DELETE
-  /v1/admin/users         GET POST PUT DELETE
-  PUT /v1/admin/users/{id}/roles
-  PUT /v1/admin/roles/{id}/permissions
-
-Management  (puerto 18081, no expuesto al exterior; exposure.include=health,info)
-  /actuator/health/{liveness,readiness}
-  /actuator/info
-```
-
-Todas las rutas de la API (salvo `/actuator/**`, que vive en el puerto de
-management) cuelgan del context path `/authorization-api`.
-
-## Configurar un consumidor
-
-Un consumidor **de servicio a servicio** (llama con cabecera
-`Authorization: Bearer ...`) no necesita más que esto — sin escribir código,
-solo configuración de Spring Security:
-
-```yaml
-spring.security.oauth2.resourceserver.jwt:
-  jwk-set-uri: https://auth.mobile-americas.com/authorization-api/.well-known/jwks.json
-  audiences: trafficflow            # sin esto, el aud NO se comprueba
-  authorities-claim-name: permissions
-  authority-prefix: ""
-```
-
-Las tres propiedades son necesarias, no solo la primera:
-
-- **`audiences`**: sin ella, Spring Boot no instala el validador de `aud`, así
-  que un token emitido para otra app se acepta igual. Esto es justo el
-  aislamiento entre apps que este servicio garantiza (ver `SeguridadMySqlIT` /
-  `SeguridadPostgresIT`); una configuración de consumidor sin `audiences` lo
-  anula del lado del cliente.
-- **`authorities-claim-name: permissions`** y **`authority-prefix: ""`**: por
-  defecto, un resource server de Spring Security lee las autoridades del
-  claim `scope`/`scp` con el prefijo `SCOPE_`. Los tokens de este servicio
-  llevan los permisos en el claim `permissions`, sin prefijo. Sin estas dos
-  propiedades, `hasAuthority('campanas:editar')` no encuentra nunca esa
-  autoridad, aunque el token sea válido y esté bien firmado.
-
-**Advertencia para un consumidor con interfaz de navegador**: el access token
-se entrega como cookie `HttpOnly` (`ma_access`), no en el cuerpo de la
-respuesta. Un consumidor de servicio a servicio no lo nota — usa la cabecera
-`Authorization` como siempre. Pero un consumidor **cuyas peticiones salen del
-navegador** no puede leer esa cookie para ponerla en una cabecera: necesita su
-propio equivalente de `CookieBearerTokenResolver`
-(`src/main/java/com/mobileamericas/authorization/web/security/CookieBearerTokenResolver.java`),
-que resuelve el Bearer token a partir de la cookie cuando no hay cabecera
-`Authorization`. Sin este resolver, un frontend que confía únicamente en la
-cookie nunca autentica nada. Este es exactamente el trabajo de la Fase 3
-(`MA-TrafficFlow-Backend`, `MA-TrafficFlow-UI`, `MA-Platform-UI`); vale la
-pena tenerlo escrito ahora en vez de descubrirlo entonces.
-
-## Despliegue
-
-`Dockerfile`, `kubernetes/deployment.yaml` y `cloudbuild.yaml` en la raíz del
-repo. Puntos que importa no olvidar:
-
-- El `Service` que enruta a este pod vive en `MA-Platform-config`, no en este
-  repositorio, y ya apunta a `8081`/`18081`. Este repo solo tiene que seguir
-  escuchando ahí (`server.port: ${SERVER_PORT:8081}` en `application.yml`).
-- La clave de firma se monta desde un `Secret` de Kubernetes
-  (`ma-auth-jwt-keys`) como volumen, sembrado desde Secret Manager en Cloud
-  Build — el mismo patrón que `MA-MtSender`, no el driver CSI de Secret
-  Manager.
-- `ADMIN_CLIENT_ID`, `FGF_CLIENT_ID` y `AUTH_SECRET` ya no existen: el mapeo
-  cliente de Google → app vive en `auth_app.google_client_id`
-  (`V2__datos_iniciales.sql`), no en variables de entorno.
-- Pasos manuales fuera de este repo (no los resuelve ningún commit): generar
-  el par de claves y el `Secret`, sembrarlo desde Secret Manager, poner los
-  `google_client_id` y los emails reales en `auth_app`/`auth_user` (la
-  migración deja marcadores `PENDIENTE-*` a propósito), crear el repositorio
-  de Artifact Registry y reapuntar los *triggers* de Cloud Build, y crear el
-  esquema de base de datos apuntado por `DB_MA_PLATFORM_URL`
-  (`kubernetes/deployment.yaml`, hoy `ma_auth`).
-  - Ese esquema debe ser **nuevo y estar vacío**. Flyway detecta un esquema no
-    vacío sin `flyway_schema_history` y aborta el arranque en vez de
-    aplicarle `V1__esquema.sql` encima: el primer despliegue apuntó por error
-    a `ma_platform_auth` (el esquema del servicio antiguo, poblado con
-    `generate-ddl: true`, del que además sale el volcado de
-    `V2__datos_iniciales.sql`) y el pod nunca llegó a estar listo. No se
-    corrige con `spring.flyway.baseline-on-migrate: true`: eso saltaría `V1`
-    en silencio y dejaría la app corriendo contra las tablas del servicio
-    viejo — falla abierto donde hoy falla cerrado. La corrección es apuntar a
-    un esquema distinto y vacío.
-  - En MySQL, crear el esquema con `utf8mb4` **no basta por sí solo**: sigue
-    haciendo falta que sea un esquema nuevo, sin las tablas de
-    `ma_platform_auth`, para que Flyway pueda aplicar `V1` desde cero.
-
-## Criterios de entrada de la fase 2
-
-Antes de que se despliegue el primer endpoint protegido con `@PreAuthorize`
-(por ejemplo, bajo `/v1/admin/**`):
-
-- Ese endpoint debe exigir, además de la autoridad concreta, que el `aud` del
-  token sea la app admin. `selfJwtDecoder` (`BeansConfig`) hoy solo valida que
-  `aud` esté presente y no vacío — una comprobación barata que detecta un
-  token malformado, no que aísla apps entre sí. Las autoridades del token
-  (`usuarios:borrar`, `*:*`, …) no llevan el nombre de la app: el `aud` es lo
-  único que separa esos espacios de nombres. Ejemplo real con los datos
-  sembrados en `V2__datos_iniciales.sql`: `usuario2` tiene `analyst@admin`
-  (solo lectura en `admin`) y `admin@fgf` (`*:*` en `fgf`); como el catálogo
-  de `fgf` es `{usuarios}`, un token con `aud=fgf` de `usuario2` lleva
-  `usuarios:borrar`. Sin comprobar también `aud=admin`,
-  `hasAuthority('usuarios:borrar')` en `/v1/admin/**` lo aceptaría: un
-  analista de solo lectura en `admin` podría borrar usuarios de `admin` con
-  un token emitido para `fgf`.
-  - Esto no se resuelve en `selfJwtDecoder`: haría falta consultar
-    `AppRepository` en cada validación (un golpe a la base de datos por
-    token) o acoplar el decodificador al nombre de una app concreta, lo que
-    rompería `/v1/auth/me` (sirve tokens de cualquier app: `admin`, `fgf` y,
-    en fase 3, `trafficflow`; `MeController` devuelve `audiencia.getFirst()`
-    tal cual). La restricción de `aud` pertenece al endpoint protegido, no al
-    decodificador compartido.
-- El camino `@PreAuthorize` → `AccessDeniedException` → `ApiExceptionHandler`
-  no tiene ninguna prueba hoy porque no existe ningún endpoint que lo
-  ejerza. En cuanto se añada el primero, necesita una prueba que confirme
-  que ese camino de rechazo también produce una respuesta coherente (sin
-  detalles internos, código de estado correcto), no solo el camino de
-  autenticación que ya cubre `SeguridadIT`.
+`src/main/resources/dev-keys/active.jwk` es la única excepción, y sólo porque es
+de desarrollo puro: no protege nada real, nunca sale del perfil `dev`, `bootJar`
+la excluye del artefacto y en cualquier otro perfil `JWT_KEY_LOCATIONS` la
+sustituye por la ruta del Secret montado en el pod.

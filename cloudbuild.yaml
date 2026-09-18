@@ -1,16 +1,19 @@
 steps:
   # AQUÍ NO SE EJECUTAN TESTS, a propósito.
   #
-  # Los 60 tests de integración levantan contenedores reales de MySQL y
+  # Los tests de integración levantan contenedores reales de MySQL y
   # PostgreSQL con Testcontainers, y cada paso de Cloud Build corre YA dentro de
   # un contenedor: necesitarían Docker dentro de Docker, que exige montar el
   # socket del demonio o un sidecar privilegiado. En lugar de asumir que este
   # proyecto lo permite, la suite se queda fuera del despliegue.
   #
   # Consecuencia que hay que conocer: este pipeline NO es una puerta de calidad.
-  # Compila y despliega lo que le den. La suite completa (120 tests, ambos
-  # motores) se ejecuta en local con './gradlew clean test integrationTest' y
-  # debe pasar ANTES de etiquetar, porque nada aquí lo va a impedir.
+  # Compila y despliega lo que le den. La suite completa (ambos motores) se
+  # ejecuta en local con './gradlew clean test integrationTest' y debe pasar
+  # ANTES de etiquetar, porque nada aquí lo va a impedir.
+  #
+  # (Antes esta nota daba cifras -60 y 120 tests- que dejaron de ser ciertas en
+  # cuanto la fase 2 añadió pruebas. Un número en un comentario envejece solo.)
   - name: 'gradle:jdk25'
     entrypoint: './gradlew'
     # Sin '-Denv=${_ENVIRONMENT}': nada lo lee desde que se quitó el bloque

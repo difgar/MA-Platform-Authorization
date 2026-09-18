@@ -6,6 +6,21 @@ server:
   servlet:
     context-path: /authorization-api
   shutdown: graceful
+  # El ingress termina TLS y le habla al pod por HTTP: sin esto, TODA URL
+  # absoluta que Spring construye a partir de la petición sale con el esquema y
+  # el host que ve la aplicación (http://<ip-del-pod>:8081), no con los
+  # públicos. El caso que rompe el login es el redirect_uri que oauth2Login le
+  # manda a Google -{baseUrl}/login/oauth2/code/google-: Google lo compara con
+  # el registrado en su consola y rechaza el que no coincide, así que nadie
+  # entra. El 'iss' de los tokens ya no depende de esto (se fija explícitamente
+  # más abajo), pero el redirect_uri sí.
+  #
+  # 'framework' instala ForwardedHeaderFilter, que lee X-Forwarded-Proto y
+  # Host/X-Forwarded-Host. CONDICIÓN: el ingress tiene que reenviar esas
+  # cabeceras y no debe dejar que las ponga el cliente. Si el ingress no las
+  # manda, esto no hace daño -se cae al esquema y host de la petición, que es
+  # lo que ya pasaba-, pero tampoco arregla nada.
+  forward-headers-strategy: framework
 
 spring:
   application.name: MA-Platform-Authorization
@@ -38,6 +53,17 @@ spring:
       # embebido intentara crearlas por detrás de Flyway y chocara con
       # hibernate.ddl-auto=validate.
       initialize-schema: never
+      # 'cleanup-cron' NO se declara aquí a propósito: se queda con el valor
+      # por defecto de Spring Session (cada minuto, en punto), que es la ÚNICA
+      # contención del crecimiento de SPRING_SESSION -nada más borra filas
+      # caducadas-. src/integrationTest/resources/application.yml sí lo
+      # desactiva con '-' (Scheduled.CRON_DISABLED), y SÓLO allí: la limpieza
+      # se cruzaba con el cierre de Hikari al cerrar cada contexto de prueba.
+      # Ese fichero REEMPLAZA a éste durante integrationTest, no se fusiona,
+      # así que el '-' no puede escaparse de las pruebas por esa vía. Lo que sí
+      # lo haría es un SPRING_SESSION_JDBC_CLEANUP_CRON en un ConfigMap; no lo
+      # pongas. Cómo comprobar a mano que la limpieza va: README, sección
+      # «Sesión SSO».
   security.oauth2.client.registration.google:
     client-id: ${GOOGLE_CLIENT_ID}
     client-secret: ${GOOGLE_CLIENT_SECRET}
@@ -46,6 +72,28 @@ spring:
     # No se declara el proveedor: con el id de registro 'google', Boot usa los
     # endpoints reales de Google (CommonOAuth2Provider).
     scope: openid,email,profile
+  security.oauth2.authorizationserver:
+    # El 'iss' de los tokens y la base de todas las URL del documento de
+    # descubrimiento. Fijarlo NO es una preferencia de estilo:
+    #
+    # Sin esta línea, Spring Authorization Server deriva el emisor de CADA
+    # petición entrante (AuthorizationServerContextFilter). Detrás del ingress
+    # eso es http://<ip-del-pod>:8081/authorization-api, así que los tokens
+    # saldrían con un 'iss' que ningún consumidor que valide el emisor acepta,
+    # y /.well-known/openid-configuration anunciaría endpoints inalcanzables
+    # desde fuera del clúster. Ninguna prueba lo detecta: en la suite el host
+    # de la petición ES el host del servidor, por construcción.
+    #
+    # El valor incluye el context-path (/authorization-api) porque los
+    # endpoints cuelgan de él: el descubrimiento se sirve en
+    # <issuer>/.well-known/openid-configuration y el token en <issuer>/oauth2/token.
+    #
+    # La variable se llama AUTH_ISSUER y no JWT_ISSUER a propósito: JWT_ISSUER
+    # era de la propiedad huérfana authorization.jwt.issuer (retirada en esta
+    # tarea), cuyo valor NO llevaba el context-path. Si un ConfigMap heredado
+    # todavía la define, reutilizar el nombre daría un emisor mal formado sin
+    # que nada avise.
+    issuer: ${AUTH_ISSUER:https://auth.mobile-americas.com/authorization-api}
   flyway:
     enabled: true
     # La segunda ubicación existe por una sola tabla; ver la cabecera de V3/V4.
@@ -55,6 +103,11 @@ spring:
     # than one migration with version 4". db/migration-vendor es hermano de
     # db/migration, no descendiente, así que el escaneo de uno no alcanza al
     # otro y el placeholder {vendor} selecciona el correcto sin colisión.
+    #
+    # NADA debe sobrescribir esto con una sola ubicación (un
+    # SPRING_FLYWAY_LOCATIONS en un ConfigMap o Secret, por ejemplo): V4 no se
+    # aplicaría, SPRING_SESSION_ATTRIBUTES no existiría y el servicio
+    # arrancaría bien hasta el primer login.
     locations: classpath:db/migration,classpath:db/migration-vendor/{vendor}
 
 management:
@@ -78,10 +131,24 @@ management:
 
 authorization:
   jwt:
-    issuer: ${JWT_ISSUER:https://auth.mobile-americas.com}
-    # La primera es la activa. Durante una rotación se declaran dos.
+    # 'issuer' ya no se declara aquí: era una propiedad huérfana. Nadie la
+    # leía, y el 'iss' real lo pone
+    # spring.security.oauth2.authorizationserver.issuer (arriba). Una
+    # propiedad de configuración que nadie lee es una mentira que alguien
+    # acaba creyéndose -por ejemplo, cambiándola para mover el emisor y
+    # comprobando después que los tokens siguen saliendo igual-.
+    #
+    # La primera clave es la activa. Durante una rotación se declaran dos.
     key-locations: ${JWT_KEY_LOCATIONS:file:/etc/ma-auth/keys/active.jwk}
   cors:
+    # NO es una comodidad: la SPA canjea el código con POST /oauth2/token desde
+    # su propio origen, así que un origen que no esté aquí hace que el
+    # navegador corte la petición antes de enviarla y el servidor no registre
+    # NADA. Ver README, sección «Dar de alta una aplicación nueva».
+    #
+    # El comodín cubre los paneles bajo el dominio propio; el ConfigMap de
+    # kubernetes/deployment.yaml lo sustituye por la lista exacta de orígenes
+    # de producción, que es lo que de verdad se despliega.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://*.mobile-americas.com}
 
 logging.level.com.mobileamericas: INFO

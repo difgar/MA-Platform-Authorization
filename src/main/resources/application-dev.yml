@@ -16,9 +16,35 @@ spring:
     #
     # La base de datos debe estar VACÍA la primera vez: Flyway aborta ante un
     # esquema no vacío sin tabla de historia, para no correr contra tablas ajenas.
+    #
+    # Sin parámetros de zona horaria, a diferencia de la URL de MySQL de
+    # kubernetes/deployment.yaml: el driver de PostgreSQL ya manda y lee los
+    # 'timestamp' sin zona en la zona de la JVM sin reinterpretarlos, así que
+    # con -Duser.timezone=UTC en la JVM basta. El de MySQL no. Esa JVM en local
+    # la ancla bootRun (build.gradle); en el pod, JAVA_TOOL_OPTIONS y TZ
+    # (kubernetes/deployment.yaml).
     url: jdbc:postgresql://localhost:5432/ma_auth
     username: ma_auth
     password: ma_auth
+  security.oauth2.authorizationserver:
+    # El emisor local, con el puerto y el context-path de este perfil. Si se
+    # dejara el valor de application.yml, el documento de descubrimiento
+    # anunciaría https://auth.mobile-americas.com/... contra un servidor que
+    # corre en localhost, y los tokens saldrían con el 'iss' de producción.
+    issuer: http://localhost:18081/authorization-api
+  security.oauth2.client.registration.google:
+    # Valores por defecto SOLO para que el contexto arranque sin exportar nada:
+    # en application.yml estas dos propiedades no tienen default y su
+    # placeholder sin resolver aborta el arranque, así que ni siquiera se podía
+    # levantar el servicio en local para mirar el documento de descubrimiento.
+    #
+    # Con estos valores NO se puede iniciar sesión: Google rechaza el cliente.
+    # Para probar el login de verdad hay que exportar GOOGLE_CLIENT_ID y
+    # GOOGLE_CLIENT_SECRET del cliente OAuth Web real, que además necesita
+    # http://localhost:18081/authorization-api/login/oauth2/code/google entre
+    # sus URI de redirección autorizadas.
+    client-id: ${GOOGLE_CLIENT_ID:sin-configurar.apps.googleusercontent.com}
+    client-secret: ${GOOGLE_CLIENT_SECRET:sin-configurar}
 
 authorization:
   jwt:
@@ -30,4 +56,9 @@ authorization:
     # del artefacto, así que no viaja a producción ni por accidente.
     key-locations: classpath:dev-keys/active.jwk
   cors:
+    # Los orígenes locales de los paneles. 5173 es el de por defecto de Vite
+    # (MA-Platform-UI no fija server.port en su vite.config.ts, confirmado
+    # contra su repositorio el 2026-09-18); 3000 es el del arranque anterior.
+    # Sin el origen aquí, el POST /oauth2/token de la SPA lo corta el navegador
+    # y en este servidor no queda ni una línea de log.
     allowed-origins: http://localhost:3000,http://localhost:5173

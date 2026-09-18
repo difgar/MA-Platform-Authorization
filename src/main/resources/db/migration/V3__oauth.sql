@@ -42,14 +42,17 @@ DROP TABLE auth_refresh_token;
 -- los blob a 'text' en PostgreSQL, porque son datos de caracteres. Los
 -- timestamp van a TIMESTAMP(6) en ambos.
 --
--- PENDIENTE (tarea 9): usar TIMESTAMP(6) en vez de 'timestamptz' sólo es
--- seguro si la JVM y la conexión a MySQL quedan ancladas a UTC; hoy NINGUNA
--- de las dos lo está (ni application.yml ni kubernetes/deployment.yaml fijan
--- zona horaria). Hasta que la tarea 9 instale ese anclaje, la exactitud de
--- estos TIMESTAMP(6) depende de la zona del entorno donde corra el proceso.
--- La suite de integración sí ancla su propia JVM a UTC (ver 'integrationTest'
--- en build.gradle), para no validar el porte bajo una condición que en
--- producción todavía no se cumple.
+-- CONDICIÓN INSTALADA (tarea 9): usar TIMESTAMP(6) en vez de 'timestamptz'
+-- sólo es seguro si la JVM y la conexión a MySQL están ancladas a UTC. Las dos
+-- lo están ya, y en los tres sitios donde corre este esquema:
+--   * el pod: TZ=UTC y -Duser.timezone=UTC en JAVA_TOOL_OPTIONS, más
+--     preserveInstants/connectionTimeZone/forceConnectionTimeZoneToSession en
+--     la URL de MySQL (kubernetes/deployment.yaml);
+--   * el arranque local: systemProperty 'user.timezone' en bootRun
+--     (build.gradle);
+--   * la suite de integración: el mismo systemProperty en integrationTest.
+-- Si alguno de esos tres anclajes desaparece, estos TIMESTAMP(6) vuelven a
+-- depender de la zona del entorno y las caducidades se desplazan con ella.
 CREATE TABLE oauth2_authorization (
     id                             VARCHAR(100)  NOT NULL,
     registered_client_id           VARCHAR(100)  NOT NULL,
