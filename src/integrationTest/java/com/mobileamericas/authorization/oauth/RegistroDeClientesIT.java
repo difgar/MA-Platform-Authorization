@@ -30,8 +30,15 @@ public abstract class RegistroDeClientesIT extends BaseIT {
 
         assertThat(c).isNotNull();
         assertThat(c.getClientAuthenticationMethods()).containsExactly(ClientAuthenticationMethod.NONE);
-        assertThat(c.getAuthorizationGrantTypes()).contains(AuthorizationGrantType.AUTHORIZATION_CODE);
+        // containsExactly, no contains: el diseño prohíbe declarar REFRESH_TOKEN
+        // (un cliente público no lo recibe aunque se declare) y 'contains' pasaría
+        // igual si alguien lo añadiera por error.
+        assertThat(c.getAuthorizationGrantTypes()).containsExactly(AuthorizationGrantType.AUTHORIZATION_CODE);
         assertThat(c.getRedirectUris()).containsExactly("https://admin.mobile-americas.com/callback");
+        assertThat(c.getPostLogoutRedirectUris()).containsExactly("https://admin.mobile-americas.com/");
+        // Sin este scope, Spring Authorization Server rechaza con invalid_scope
+        // cualquier /oauth2/authorize que pida openid, y no se emite id_token.
+        assertThat(c.getScopes()).containsExactly("openid");
         assertThat(c.getClientSettings().isRequireProofKey()).isTrue();
         assertThat(c.getTokenSettings().getAccessTokenTimeToLive()).isEqualTo(Duration.ofHours(2));
     }

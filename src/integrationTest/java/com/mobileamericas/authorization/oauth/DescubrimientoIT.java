@@ -101,7 +101,8 @@ public abstract class DescubrimientoIT extends BaseIT {
      * RegisteredClientRepositoryAdapter (sobre auth_app) es el único registro
      * de clientes, así que 'admin' es el cliente real y activo que la app del
      * mismo nombre representa. redirect_uri es la que esa fila trae en
-     * auth_app.redirect_uris (ver V2__datos_iniciales.sql).
+     * auth_app.redirect_uris (ver V3__oauth.sql, que es la migración que
+     * añade y siembra esas columnas, no V2).
      *
      * Cliente HTTP propio, no TestRestTemplate, por lo mismo que en
      * ActuatorSecurityIT: TestRestTemplate sigue los redirects, así que una
