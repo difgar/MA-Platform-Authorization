@@ -18,23 +18,29 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
-    void las_migraciones_crean_las_ocho_tablas() {
-        // isGreaterThanOrEqualTo(0L) sobre un count(*) es tautológico: cualquier
-        // consulta que no lance excepción lo cumple, exista la tabla o no haga
-        // falta que exista. information_schema.tables sí distingue "existe" de
-        // "no existe", y funciona igual en los dos motores sin filtrar por
-        // esquema: filtrar por el prefijo 'auth_' basta, porque ninguna tabla
-        // de sistema de ninguno de los dos motores lo usa.
+    void las_migraciones_crean_las_tablas_esperadas() {
         var tablas = jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
-                         WHERE table_name LIKE 'auth_%'
+                         WHERE table_schema NOT IN ('pg_catalog','information_schema','sys','mysql','performance_schema')
                         """)
-                .query(String.class).list();
+                .query(String.class).list().stream().map(String::toLowerCase).toList();
 
-        assertThat(tablas).extracting(String::toLowerCase).containsExactlyInAnyOrder(
+        assertThat(tablas).contains(
                 "auth_app", "auth_permission", "auth_role", "auth_user",
-                "auth_user_role", "auth_role_permission",
-                "auth_refresh_token", "auth_audit");
+                "auth_user_role", "auth_role_permission", "auth_audit",
+                "oauth2_authorization", "spring_session", "spring_session_attributes");
+        assertThat(tablas).doesNotContain("auth_refresh_token");
+    }
+
+    @Test
+    void auth_app_lleva_la_configuracion_de_cliente_oauth() {
+        var cols = jdbc.sql("""
+                        SELECT column_name FROM information_schema.columns
+                         WHERE lower(table_name) = 'auth_app'
+                        """).query(String.class).list().stream().map(String::toLowerCase).toList();
+
+        assertThat(cols).contains("redirect_uris", "post_logout_redirect_uris", "access_ttl_seconds");
+        assertThat(cols).doesNotContain("google_client_id");
     }
 
     @Test

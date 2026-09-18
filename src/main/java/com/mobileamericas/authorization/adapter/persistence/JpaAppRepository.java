@@ -9,8 +9,6 @@ import java.util.Optional;
 
 interface JpaAppRepository extends JpaRepository<AppEntity, String> {
 
-    Optional<AppEntity> findByGoogleClientId(String googleClientId);
-
     Optional<AppEntity> findByName(String name);
 
     @Query("""

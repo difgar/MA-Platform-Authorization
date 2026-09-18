@@ -11,7 +11,7 @@ class AccessGrantTest {
 
     private static final UUID APP_ID = UUID.randomUUID();
     private static final App APP =
-            new App(APP_ID, "trafficflow", "cliente-123", "https://tf.example", true);
+            new App(APP_ID, "trafficflow", "https://tf.example", true);
     private static final Set<String> CATALOGO = Set.of("campanas", "redes");
 
     private static User usuarioCon(Set<Permission> permisos) {
@@ -95,7 +95,7 @@ class AccessGrantTest {
         // y nadie vuelve a mirar si su app sigue activa-, así que la
         // comprobación tiene que vivir aquí, en el dominio, donde se construye
         // cada grant.
-        var appDesactivada = new App(APP_ID, "trafficflow", "cliente-123", "https://tf.example", false);
+        var appDesactivada = new App(APP_ID, "trafficflow", "https://tf.example", false);
         var usuario = usuarioCon(Set.of(Permission.parse("*:*")));
 
         assertThat(AccessGrant.of(usuario, appDesactivada, CATALOGO).isEmpty()).isTrue();

@@ -30,6 +30,15 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+    # Este fichero de test REEMPLAZA classpath:application.yml en vez de
+    # fusionarse con él (mismo nombre de recurso, resuelto una sola vez): por
+    # eso 'hibernate.ddl-auto' y 'flyway.enabled', arriba y aquí, ya estaban
+    # repetidos antes de esta tarea. 'locations' necesita el mismo trato, o
+    # las pruebas de integración correrían con el valor por defecto de Boot
+    # (classpath:db/migration) y jamás aplicarían V4. Ver application.yml
+    # principal para la razón de por qué la segunda ubicación no cuelga de
+    # db/migration/{vendor}.
+    locations: classpath:db/migration,classpath:db/migration-vendor/{vendor}
 
 authorization:
   jwt:

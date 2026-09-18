@@ -20,18 +20,8 @@ class AppRepositoryAdapter implements AppRepository {
     }
 
     @Override
-    public Optional<App> findByGoogleClientId(String googleClientId) {
-        return jpa.findByGoogleClientId(googleClientId).map(DomainMapper::toDomain);
-    }
-
-    @Override
     public Optional<App> findByName(String name) {
         return jpa.findByName(name).map(DomainMapper::toDomain);
-    }
-
-    @Override
-    public Optional<App> findById(UUID id) {
-        return jpa.findById(id.toString()).map(DomainMapper::toDomain);
     }
 
     @Override

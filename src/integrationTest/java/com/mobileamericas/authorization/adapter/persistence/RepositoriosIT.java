@@ -15,19 +15,6 @@ public abstract class RepositoriosIT extends BaseIT {
     @Autowired UserRepository usuarios;
 
     @Test
-    void encuentra_la_app_por_su_client_id_de_google() {
-        var app = apps.findByGoogleClientId("PENDIENTE-admin");
-
-        assertThat(app).isPresent();
-        assertThat(app.get().name()).isEqualTo("admin");
-    }
-
-    @Test
-    void no_encuentra_un_client_id_desconocido() {
-        assertThat(apps.findByGoogleClientId("no-existe")).isEmpty();
-    }
-
-    @Test
     void el_catalogo_de_recursos_excluye_los_comodines() {
         var app = apps.findByName("admin").orElseThrow();
 

@@ -14,7 +14,7 @@ final class DomainMapper {
     private DomainMapper() {}
 
     static App toDomain(AppEntity e) {
-        return new App(UUID.fromString(e.id), e.name, e.googleClientId, e.url, e.active);
+        return new App(UUID.fromString(e.id), e.name, e.url, e.active);
     }
 
     static User toDomain(UserEntity e) {

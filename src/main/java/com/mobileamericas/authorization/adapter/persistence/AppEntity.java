@@ -18,9 +18,6 @@ class AppEntity {
     @Column(nullable = false, length = 100)
     String name;
 
-    @Column(name = "google_client_id", nullable = false)
-    String googleClientId;
-
     String url;
 
     @Column(nullable = false)
