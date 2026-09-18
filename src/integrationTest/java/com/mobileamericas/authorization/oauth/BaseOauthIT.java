@@ -55,7 +55,7 @@ public abstract class BaseOauthIT extends BaseIT {
      * en la cabecera Location, y seguirla la borraría (además de intentar
      * conectarse de verdad a https://admin.mobile-americas.com).
      */
-    private static final HttpClient CLIENTE = HttpClient.newBuilder()
+    protected static final HttpClient CLIENTE = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
@@ -226,7 +226,7 @@ public abstract class BaseOauthIT extends BaseIT {
         return cookies;
     }
 
-    private String redirectUriDe(String clientId) {
+    protected String redirectUriDe(String clientId) {
         var cliente = clientes.findByClientId(clientId);
         if (cliente == null) {
             throw new IllegalArgumentException(
@@ -235,7 +235,7 @@ public abstract class BaseOauthIT extends BaseIT {
         return cliente.getRedirectUris().iterator().next();
     }
 
-    private static String codificar(String valor) {
+    protected static String codificar(String valor) {
         return URLEncoder.encode(valor, UTF_8);
     }
 }
