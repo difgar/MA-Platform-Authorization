@@ -210,7 +210,14 @@ access token está atado a un `aud` y no puede decir nada de las demás.
 Cada entrada lleva **el destino además del nombre** para que el consumidor no
 tenga que mantener su propio mapa nombre→dominio: sería un segundo registro que
 debe concordar con `auth_app` sin que nada los compare. `url` se omite si la
-fila no la tiene. La regla es
+fila no la tiene, y una entrada sin `url` no debería pintarse como enlace: un
+enlace a ninguna parte parece una avería, no una falta de permiso.
+
+La lista **incluye la aplicación que pide el token**. Para descartarse a sí
+mismo, un consumidor debe comparar con **su propio `client_id` configurado**, no
+con el nombre escrito a mano: así no queda un solo nombre de aplicación en su
+código, y una aplicación nueva aparece en su menú el día que se da de alta, sin
+tocar el front. La regla es
 «obtendría un token», no «tiene algún rol» — es la misma que aplica
 `/oauth2/authorize`, para que un menú construido con este claim nunca pinte un
 enlace que al pulsarlo deniegue. **Se emite siempre, aunque venga vacío.**
