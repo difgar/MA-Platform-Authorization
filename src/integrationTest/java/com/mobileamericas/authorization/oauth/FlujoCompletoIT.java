@@ -113,7 +113,12 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         // y no puede decir nada de las demás. usuario1 tiene admin@admin y
         // user@fgf, así que entra en las dos. Ordenado, para que el consumidor
         // no dependa del orden de las filas.
-        assertThat(identidad.get("apps")).isEqualTo(List.of("admin", "fgf"));
+        // Cada entrada lleva el destino, no sólo el nombre: si el panel tuviera
+        // que mantener su propio mapa nombre->dominio, sería un segundo
+        // registro que debe concordar con auth_app sin que nada los compare.
+        assertThat(identidad.get("apps")).isEqualTo(List.of(
+                Map.of("name", "admin", "url", "https://admin.mobile-americas.com"),
+                Map.of("name", "fgf", "url", "https://fgf.mobile-americas.com")));
         // Los permisos van SÓLO en el access token: un ID token es un documento
         // que el navegador puede guardar y que sobrevive horas a un cambio de rol.
         assertThat(identidad).doesNotContainKeys("roles", "permissions");

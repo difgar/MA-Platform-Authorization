@@ -13,7 +13,9 @@ import org.springframework.security.oauth2.server.authorization.token.JwtEncodin
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.stereotype.Component;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -116,20 +118,44 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
      * laguna, y obligaría a cada consumidor a escribir una rama que nadie
      * probaría nunca.
      *
+     * Cada entrada lleva el nombre y la URL de destino; ver entradaDeAplicacion.
+     *
      * Cuesta una consulta por aplicación en la que el usuario tenga rol (hoy
      * dos como mucho) y no se cachea, igual que el resto del customizador:
      * degradar a alguien se nota en el siguiente token que pida.
      */
-    private List<String> aplicacionesAlcanzables(User usuario) {
+    private List<Map<String, String>> aplicacionesAlcanzables(User usuario) {
         return usuario.roles().stream()
                 .map(Role::appId)
                 .distinct()
                 .map(apps::findById)
                 .flatMap(Optional::stream)
                 .filter(app -> !AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id())).isEmpty())
-                .map(App::name)
-                .sorted()
+                .sorted(Comparator.comparing(App::name))
+                .map(ClaimsCustomizer::entradaDeAplicacion)
                 .toList();
+    }
+
+    /**
+     * {@code {"name": "trafficflow", "url": "https://tf.mobile-americas.com"}}.
+     *
+     * Lleva la URL y no sólo el nombre porque quien consume este claim es el
+     * panel que pinta el menú, y con una lista de nombres tendría que mantener
+     * su propio mapa nombre->dominio: un segundo registro que debe concordar
+     * con auth_app sin que nada los compare, que es la forma exacta del bug
+     * que motivó toda la fase 2. Saliendo el destino de la MISMA fila que
+     * decide el acceso, el enlace y la puerta no pueden divergir.
+     *
+     * 'url' se omite si la fila no la tiene -la columna es nullable-, mismo
+     * criterio que 'name' y 'picture': se calla lo que se desconoce. Un
+     * consumidor que reciba una entrada sin 'url' sabe que el usuario entra
+     * ahí y que nadie ha dicho por dónde; pintar un enlace a ninguna parte
+     * sería peor que no pintarlo.
+     */
+    private static Map<String, String> entradaDeAplicacion(App app) {
+        return app.url() == null
+                ? Map.of("name", app.name())
+                : Map.of("name", app.name(), "url", app.url());
     }
 
     /**

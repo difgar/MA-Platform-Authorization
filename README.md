@@ -197,8 +197,20 @@ da. **No lleva `roles` ni `permissions`**: es un documento de identidad que el
 navegador puede guardar y que sobrevive horas a un cambio de rol.
 
 `apps` es la lista de **aplicaciones donde este usuario obtendría un token**,
-ordenada, y existe para el panel que hace de puerta de entrada: el access token
-está atado a un `aud` y no puede decir nada de las demás. La regla es
+ordenada por nombre, y existe para el panel que hace de puerta de entrada: el
+access token está atado a un `aud` y no puede decir nada de las demás.
+
+```json
+"apps": [
+  {"name": "admin",       "url": "https://admin.mobile-americas.com"},
+  {"name": "trafficflow", "url": "https://tf.mobile-americas.com"}
+]
+```
+
+Cada entrada lleva **el destino además del nombre** para que el consumidor no
+tenga que mantener su propio mapa nombre→dominio: sería un segundo registro que
+debe concordar con `auth_app` sin que nada los compare. `url` se omite si la
+fila no la tiene. La regla es
 «obtendría un token», no «tiene algún rol» — es la misma que aplica
 `/oauth2/authorize`, para que un menú construido con este claim nunca pinte un
 enlace que al pulsarlo deniegue. **Se emite siempre, aunque venga vacío.**

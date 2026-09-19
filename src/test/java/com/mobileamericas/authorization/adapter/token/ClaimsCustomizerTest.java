@@ -116,7 +116,8 @@ class ClaimsCustomizerTest {
         // 'apps' son las aplicaciones donde este usuario obtendría un token, no
         // aquellas donde tiene rol: la misma regla que aplica el validador de
         // /authorize, para que el menú y la puerta no se contradigan.
-        assertThat(claims.<Object>getClaim("apps")).isEqualTo(List.of("admin"));
+        assertThat(claims.<Object>getClaim("apps"))
+                .isEqualTo(List.of(Map.of("name", "admin", "url", "https://admin.example")));
     }
 
     /**
