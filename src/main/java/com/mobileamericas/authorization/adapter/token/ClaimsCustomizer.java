@@ -63,8 +63,17 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
      * que el navegador puede llegar a guardar y que no caduca hasta dentro de
      * horas, mucho después de que un cambio de rol debiera notarse. Por eso
      * 'roles' y 'permissions' no van aquí.
+     *
+     * 'uid' es auth_user.id, y es el ÚNICO identificador de esta plataforma
+     * que no cambia nunca. Existe porque los otros dos sí cambian: 'sub' y
+     * 'email' llevan hoy el correo, y a un correo se le cambia el dominio
+     * cuando la empresa se renombra, o el nombre cuando alguien se casa. Un
+     * consumidor que guarde 'sub' o 'email' como clave ajena se queda ese día
+     * con una referencia que no apunta a nadie, sin que nada falle ni avise.
+     * Para mostrar en pantalla, 'email'; para guardar, 'uid'.
      */
     private void personalizarIdToken(JwtEncodingContext ctx, String email, User usuario) {
+        ctx.getClaims().claim("uid", usuario.id().toString());
         ctx.getClaims().claim("email", email);
 
         // full_name es NULLABLE en el esquema (mismo criterio que aplicaba
@@ -94,14 +103,19 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
      * que lo lea como una dirección de correo se estaría apoyando en un
      * detalle de implementación de este emisor. 'email' es el claim que SÍ
      * promete ser una dirección, y es el que un resource server debe leer
-     * para mostrar o registrar quién hizo algo. Si algún día 'sub' pasa a ser
-     * el UUID de auth_user, quien use 'email' sigue funcionando y quien use
-     * 'sub' se rompe -en silencio, porque el token seguiría validando-.
+     * para mostrar o registrar quién hizo algo.
+     *
+     * Y para REGISTRAR de forma duradera -una auditoría, una clave ajena- ni
+     * uno ni otro: 'uid', que es auth_user.id y no cambia nunca. 'sub' y
+     * 'email' llevan hoy el mismo correo, y un correo es mutable; quien los
+     * guarde como identidad se rompe el día que alguien cambie de dirección,
+     * en silencio, porque el token seguiría validando.
      */
     private void personalizarAccessToken(JwtEncodingContext ctx, String email, User usuario) {
         var app = apps.findByName(ctx.getRegisteredClient().getClientId()).orElseThrow();
         var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
 
+        ctx.getClaims().claim("uid", usuario.id().toString());
         ctx.getClaims().claim("email", email);
         ctx.getClaims().claim("roles", List.copyOf(grant.roleNames()));
         ctx.getClaims().claim("permissions", List.copyOf(grant.authorities()));

@@ -73,7 +73,11 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
 
         // El resto del contrato de claims, que ninguna otra prueba puede ver
         // porque ninguna otra llega a un token emitido por el framework.
-        assertThat(claims).containsKeys("sub", "email", "roles", "permissions");
+        assertThat(claims).containsKeys("uid", "sub", "email", "roles", "permissions");
+        // 'uid' es auth_user.id y es el ÚNICO identificador que no cambia: se
+        // afirma contra el UUID sembrado por V2, no contra lo que devuelva el
+        // propio token, o la prueba sería tautológica.
+        assertThat(claims.get("uid")).isEqualTo("d0000000-0000-4000-8000-000000000001");
         // El 'sub' lo pone el framework con Authentication.getName(), que es el
         // email normalizado que fija UsuarioOidcService, NO el UUID de
         // auth_user. Se afirma aquí porque es el identificador con el que un
@@ -104,6 +108,7 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         assertThat(identidad.get("aud")).isEqualTo(List.of("admin"));
         assertThat(identidad.get("sub")).isEqualTo("usuario1@pendiente.local");
         assertThat(identidad.get("email")).isEqualTo("usuario1@pendiente.local");
+        assertThat(identidad.get("uid")).isEqualTo("d0000000-0000-4000-8000-000000000001");
         // Los permisos van SÓLO en el access token: un ID token es un documento
         // que el navegador puede guardar y que sobrevive horas a un cambio de rol.
         assertThat(identidad).doesNotContainKeys("roles", "permissions");

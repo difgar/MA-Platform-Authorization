@@ -86,6 +86,9 @@ class ClaimsCustomizerTest {
         customizador.customize(ctx);
 
         assertThat(ctx.getClaims().build().<Object>getClaim("email")).isEqualTo(EMAIL);
+        assertThat(ctx.getClaims().build().<Object>getClaim("uid"))
+                .as("el identificador estable va también en el access token: es con el que se audita")
+                .isEqualTo(usuarios.idDe(EMAIL).toString());
     }
 
     /**
@@ -105,6 +108,7 @@ class ClaimsCustomizerTest {
 
         var claims = ctx.getClaims().build();
         assertThat(claims.<Object>getClaim("email")).isEqualTo(EMAIL);
+        assertThat(claims.<Object>getClaim("uid")).isEqualTo(usuarios.idDe(EMAIL).toString());
         assertThat(claims.<Object>getClaim("name")).isEqualTo("Persona Uno");
         assertThat(claims.<Object>getClaim("picture")).isEqualTo("https://google.example/avatar.png");
         assertThat(claims.<Object>getClaim("permissions")).isNull();

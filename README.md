@@ -184,6 +184,7 @@ Access token:
 | claim | qué es |
 |---|---|
 | `iss` | `https://auth.mobile-americas.com/authorization-api` (fijado, no derivado de la petición) |
+| `uid` | **`auth_user.id`: el único identificador que no cambia nunca.** Es el que hay que guardar |
 | `sub` | **el email del usuario, en minúsculas** — ver aviso abajo |
 | `aud` | el `client_id`, que es el nombre de la aplicación en `auth_app` |
 | `email` | el mismo email; es el claim que promete ser una dirección |
@@ -191,18 +192,26 @@ Access token:
 | `permissions` | permisos ya expandidos (`usuarios:leer`, …); los comodines nunca viajan |
 | `scope` | `openid`, y nada más: los permisos no son *scopes* |
 
-El ID token lleva `email`, y `name` y `picture` si Google los da. **No lleva
-`roles` ni `permissions`**: es un documento de identidad que el navegador puede
-guardar y que sobrevive horas a un cambio de rol.
+El ID token lleva `uid` y `email`, y `name` y `picture` si Google los da. **No
+lleva `roles` ni `permissions`**: es un documento de identidad que el navegador
+puede guardar y que sobrevive horas a un cambio de rol.
 
+> ## ⚠️ Para guardar, `uid`. Nunca `sub` ni `email`.
+>
 > **`sub` es el email, no un identificador opaco.** Es contraintuitivo: por
-> contrato `sub` es opaco, y aquí resulta ser una dirección de correo. La
-> consecuencia práctica es que **si a un usuario se le cambia el correo, su `sub`
-> cambia**, y un consumidor que lo haya guardado como clave ajena se queda con
-> una referencia rota sin que nada lo avise. Guarda `email` si quieres el correo,
-> y no uses ninguno de los dos como clave estable. El identificador estable
-> (`auth_user.id`) **no viaja hoy en el token**; meterlo es una decisión de la
-> fase 3, no un parche.
+> contrato `sub` es opaco, y aquí resulta ser una dirección de correo.
+>
+> La consecuencia es que **`sub` y `email` son mutables**: el día que a alguien
+> se le cambie el correo —se casa, la empresa se renombra, se corrige una
+> errata— cambian los dos. Un consumidor que haya guardado cualquiera de ellos
+> como clave ajena se queda con una referencia que no apunta a nadie, **sin que
+> nada falle ni avise**: el token siguiente sigue validando perfectamente, sólo
+> que ya es otra persona.
+>
+> Por eso el token lleva **`uid`**, que es `auth_user.id` y no cambia nunca.
+>
+> La regla, en una línea: **`email` para mostrar en pantalla, `uid` para
+> guardar en tu base de datos.**
 
 ## Dar de alta una aplicación nueva
 
