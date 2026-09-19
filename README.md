@@ -192,9 +192,16 @@ Access token:
 | `permissions` | permisos ya expandidos (`usuarios:leer`, …); los comodines nunca viajan |
 | `scope` | `openid`, y nada más: los permisos no son *scopes* |
 
-El ID token lleva `uid` y `email`, y `name` y `picture` si Google los da. **No
-lleva `roles` ni `permissions`**: es un documento de identidad que el navegador
-puede guardar y que sobrevive horas a un cambio de rol.
+El ID token lleva `uid`, `email` y `apps`, más `name` y `picture` si Google los
+da. **No lleva `roles` ni `permissions`**: es un documento de identidad que el
+navegador puede guardar y que sobrevive horas a un cambio de rol.
+
+`apps` es la lista de **aplicaciones donde este usuario obtendría un token**,
+ordenada, y existe para el panel que hace de puerta de entrada: el access token
+está atado a un `aud` y no puede decir nada de las demás. La regla es
+«obtendría un token», no «tiene algún rol» — es la misma que aplica
+`/oauth2/authorize`, para que un menú construido con este claim nunca pinte un
+enlace que al pulsarlo deniegue. **Se emite siempre, aunque venga vacío.**
 
 > ## ⚠️ Para guardar, `uid`. Nunca `sub` ni `email`.
 >

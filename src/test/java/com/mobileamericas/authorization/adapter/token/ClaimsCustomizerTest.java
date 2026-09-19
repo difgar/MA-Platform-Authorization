@@ -113,6 +113,10 @@ class ClaimsCustomizerTest {
         assertThat(claims.<Object>getClaim("picture")).isEqualTo("https://google.example/avatar.png");
         assertThat(claims.<Object>getClaim("permissions")).isNull();
         assertThat(claims.<Object>getClaim("roles")).isNull();
+        // 'apps' son las aplicaciones donde este usuario obtendría un token, no
+        // aquellas donde tiene rol: la misma regla que aplica el validador de
+        // /authorize, para que el menú y la puerta no se contradigan.
+        assertThat(claims.<Object>getClaim("apps")).isEqualTo(List.of("admin"));
     }
 
     /**
@@ -273,6 +277,11 @@ class ClaimsCustomizerTest {
         @Override
         public Optional<App> findByName(String name) {
             return APP.name().equals(name) ? Optional.of(APP) : Optional.empty();
+        }
+
+        @Override
+        public Optional<App> findById(UUID id) {
+            return APP_ID.equals(id) ? Optional.of(APP) : Optional.empty();
         }
 
         @Override

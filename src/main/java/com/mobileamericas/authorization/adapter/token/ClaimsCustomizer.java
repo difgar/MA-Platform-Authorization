@@ -3,6 +3,8 @@ package com.mobileamericas.authorization.adapter.token;
 import com.mobileamericas.authorization.application.port.AppRepository;
 import com.mobileamericas.authorization.application.port.UserRepository;
 import com.mobileamericas.authorization.domain.AccessGrant;
+import com.mobileamericas.authorization.domain.App;
+import com.mobileamericas.authorization.domain.Role;
 import com.mobileamericas.authorization.domain.User;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -85,6 +87,49 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
         }
 
         avatarDe(ctx.getPrincipal()).ifPresent(url -> ctx.getClaims().claim("picture", url));
+        ctx.getClaims().claim("apps", aplicacionesAlcanzables(usuario));
+    }
+
+    /**
+     * Las aplicaciones donde este usuario OBTENDRÍA un token, ordenadas.
+     *
+     * Existe para el panel que hace de puerta de entrada: necesita pintar un
+     * enlace por módulo accesible, y el access token no le sirve porque está
+     * atado a un 'aud' y sólo habla de esa aplicación. Por eso va en el ID
+     * token, que es donde vive lo que no depende de la aplicación destino.
+     *
+     * La regla es «obtendría un token», NO «tiene algún rol», y la diferencia
+     * importa: AccesoAlClienteValidator rechaza en /authorize cuando el permiso
+     * resultante queda VACÍO, no cuando faltan roles. Un usuario con un rol sin
+     * permisos, o con un rol en una aplicación desactivada, tiene rol y no
+     * entra. Si este claim dijera «tiene rol», el menú pintaría un enlace que
+     * al pulsarlo deniega: el usuario vería la puerta y la puerta le diría que
+     * no, que parece una avería y no una falta de permiso. Aquí se aplica la
+     * MISMA regla que el validador para que el menú y la puerta no se
+     * contradigan nunca.
+     *
+     * Se emite SIEMPRE, aunque venga vacío, al revés que 'name' y 'picture'.
+     * No es una incoherencia: aquellos se omiten porque el dato se DESCONOCE
+     * -Google no lo mandó, full_name es NULL- y mandarlos vacíos haría creer
+     * que se sabe y no hay nada. Aquí el dato se CONOCE: sabemos que no entra
+     * en ninguna. Una lista vacía es una respuesta; la ausencia sería una
+     * laguna, y obligaría a cada consumidor a escribir una rama que nadie
+     * probaría nunca.
+     *
+     * Cuesta una consulta por aplicación en la que el usuario tenga rol (hoy
+     * dos como mucho) y no se cachea, igual que el resto del customizador:
+     * degradar a alguien se nota en el siguiente token que pida.
+     */
+    private List<String> aplicacionesAlcanzables(User usuario) {
+        return usuario.roles().stream()
+                .map(Role::appId)
+                .distinct()
+                .map(apps::findById)
+                .flatMap(Optional::stream)
+                .filter(app -> !AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id())).isEmpty())
+                .map(App::name)
+                .sorted()
+                .toList();
     }
 
     /**

@@ -109,6 +109,11 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         assertThat(identidad.get("sub")).isEqualTo("usuario1@pendiente.local");
         assertThat(identidad.get("email")).isEqualTo("usuario1@pendiente.local");
         assertThat(identidad.get("uid")).isEqualTo("d0000000-0000-4000-8000-000000000001");
+        // 'apps' es cross-app a propósito: el access token está atado a un 'aud'
+        // y no puede decir nada de las demás. usuario1 tiene admin@admin y
+        // user@fgf, así que entra en las dos. Ordenado, para que el consumidor
+        // no dependa del orden de las filas.
+        assertThat(identidad.get("apps")).isEqualTo(List.of("admin", "fgf"));
         // Los permisos van SÓLO en el access token: un ID token es un documento
         // que el navegador puede guardar y que sobrevive horas a un cambio de rol.
         assertThat(identidad).doesNotContainKeys("roles", "permissions");
