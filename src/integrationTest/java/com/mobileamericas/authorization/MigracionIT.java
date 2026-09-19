@@ -105,12 +105,13 @@ public abstract class MigracionIT extends BaseIT {
 
     @Test
     void reproduce_el_volcado_de_produccion() {
-        // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql: trafficflow se da
-        // de alta con su catálogo y sin roles (ver esa migración), así que
-        // auth_role y auth_user_role no cambian frente al volcado original.
+        // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
+        // 6 con V6__rol_admin_trafficflow.sql. auth_user y auth_user_role NO
+        // cambian: ninguna migración da de alta personas ni les asigna roles,
+        // porque los correos reales no entran en git (ver el final de V6).
         assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(5L);
+        assertThat(contar("auth_role")).isEqualTo(6L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -131,6 +132,31 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
+    void el_rol_admin_de_trafficflow_lleva_comodin_y_su_advertencia_escrita() {
+        // El comodín concede los 25 permisos, reenvios:crear incluido. Es una
+        // decisión tomada con la consecuencia delante, no el resultado de no
+        // decidir, y por eso la advertencia vive en la columna -editable sin
+        // migración- y no sólo en un comentario del SQL.
+        var rol = jdbc.sql("""
+                        SELECT r.description FROM auth_role r
+                          JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = 'trafficflow' AND r.name = 'admin'
+                        """).query(String.class).single();
+
+        assertThat(rol).contains("reenviar").contains("dos veces se paga dos veces");
+
+        var permisos = jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p
+                          JOIN auth_role_permission rp ON rp.permission_id = p.id
+                          JOIN auth_role r ON r.id = rp.role_id
+                          JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = 'trafficflow' AND r.name = 'admin'
+                        """).query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
+
+        assertThat(permisos).containsExactly("*:*");
+    }
+
+    @Test
     void trafficflow_queda_dado_de_alta_con_sus_cuatro_valores() {
         var trafficflow = configuracionCliente("trafficflow");
 
@@ -146,10 +172,16 @@ public abstract class MigracionIT extends BaseIT {
         // containsExactlyInAnyOrder, no contains: un permiso de más -por
         // ejemplo, un 'postbacks:reenviar' colado por error- es una concesión
         // que nadie pidió y debe hacer fallar esta prueba tanto como uno de menos.
+        // resource <> '*' porque el comodín NO es una entrada del catálogo: es
+        // la forma de una concesión. Es la misma condición que aplica
+        // JpaAppRepository.findResourcesByAppId, que es quien lo expande, y
+        // por eso V6 puede añadir el '*:*' del rol admin sin que esta lista
+        // de 25 cambie. Sin ese filtro, el test contaría concesiones y no
+        // recursos, y fallaría cada vez que se cree un rol con comodín.
         var permisos = jdbc.sql("""
                         SELECT p.resource, p.verb FROM auth_permission p
                           JOIN auth_app a ON a.id = p.app_id
-                         WHERE a.name = 'trafficflow'
+                         WHERE a.name = 'trafficflow' AND p.resource <> '*'
                         """)
                 .query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb"))
                 .list();
