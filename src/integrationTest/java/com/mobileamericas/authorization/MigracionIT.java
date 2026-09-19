@@ -105,7 +105,10 @@ public abstract class MigracionIT extends BaseIT {
 
     @Test
     void reproduce_el_volcado_de_produccion() {
-        assertThat(contar("auth_app")).isEqualTo(2L);
+        // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql: trafficflow se da
+        // de alta con su catálogo y sin roles (ver esa migración), así que
+        // auth_role y auth_user_role no cambian frente al volcado original.
+        assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
         assertThat(contar("auth_role")).isEqualTo(5L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
@@ -125,6 +128,45 @@ public abstract class MigracionIT extends BaseIT {
                 .list();
 
         assertThat(permisos).containsExactlyInAnyOrder("*:leer", "*:editar");
+    }
+
+    @Test
+    void trafficflow_queda_dado_de_alta_con_sus_cuatro_valores() {
+        var trafficflow = configuracionCliente("trafficflow");
+
+        assertThat(trafficflow.redirectUris()).isEqualTo(
+                "https://tf.mobile-americas.com/callback,http://localhost:5174/callback");
+        assertThat(trafficflow.postLogoutRedirectUris()).isEqualTo(
+                "https://tf.mobile-americas.com/,http://localhost:5174/");
+        assertThat(trafficflow.accessTtlSeconds()).isEqualTo(7200L);
+    }
+
+    @Test
+    void el_catalogo_de_trafficflow_tiene_exactamente_los_veinticinco_permisos() {
+        // containsExactlyInAnyOrder, no contains: un permiso de más -por
+        // ejemplo, un 'postbacks:reenviar' colado por error- es una concesión
+        // que nadie pidió y debe hacer fallar esta prueba tanto como uno de menos.
+        var permisos = jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p
+                          JOIN auth_app a ON a.id = p.app_id
+                         WHERE a.name = 'trafficflow'
+                        """)
+                .query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb"))
+                .list();
+
+        assertThat(permisos).containsExactlyInAnyOrder(
+                "redes:crear", "redes:leer", "redes:editar",
+                "servicios:crear", "servicios:leer", "servicios:editar",
+                "campanas:crear", "campanas:leer", "campanas:editar",
+                "enlaces:crear", "enlaces:leer", "enlaces:borrar",
+                "reglas:crear", "reglas:leer", "reglas:editar", "reglas:borrar",
+                "endpoints:crear", "endpoints:leer", "endpoints:editar",
+                "postbacks:leer",
+                "reenvios:crear",
+                "informe:leer",
+                "auditoria:leer",
+                "cache:leer",
+                "busqueda:leer");
     }
 
     @Test

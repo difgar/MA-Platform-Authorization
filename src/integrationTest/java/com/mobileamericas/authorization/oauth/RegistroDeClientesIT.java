@@ -44,6 +44,21 @@ public abstract class RegistroDeClientesIT extends BaseIT {
     }
 
     @Test
+    void trafficflow_se_registra_como_cliente_publico_con_pkce() {
+        var c = clientes.findByClientId("trafficflow");
+
+        assertThat(c).isNotNull();
+        assertThat(c.getClientAuthenticationMethods()).containsExactly(ClientAuthenticationMethod.NONE);
+        assertThat(c.getAuthorizationGrantTypes()).containsExactly(AuthorizationGrantType.AUTHORIZATION_CODE);
+        assertThat(c.getRedirectUris()).containsExactlyInAnyOrder(
+                "https://tf.mobile-americas.com/callback", "http://localhost:5174/callback");
+        assertThat(c.getPostLogoutRedirectUris()).containsExactlyInAnyOrder(
+                "https://tf.mobile-americas.com/", "http://localhost:5174/");
+        assertThat(c.getClientSettings().isRequireProofKey()).isTrue();
+        assertThat(c.getTokenSettings().getAccessTokenTimeToLive()).isEqualTo(Duration.ofHours(2));
+    }
+
+    @Test
     void un_cliente_desconocido_no_existe() {
         assertThat(clientes.findByClientId("no-registrado")).isNull();
     }

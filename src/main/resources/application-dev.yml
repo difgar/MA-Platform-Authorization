@@ -63,6 +63,7 @@ authorization:
     # Los orígenes locales de los paneles. 5173 es el de por defecto de Vite
     # (MA-Platform-UI no fija server.port en su vite.config.ts, confirmado
     # contra su repositorio el 2026-09-18); 3000 es el del arranque anterior.
-    # Sin el origen aquí, el POST /oauth2/token de la SPA lo corta el navegador
-    # y en este servidor no queda ni una línea de log.
-    allowed-origins: http://localhost:3000,http://localhost:5173
+    # 5174 es el de TrafficFlow: su vite.config.ts fija port: 5174 con
+    # strictPort: true. Sin el origen aquí, el POST /oauth2/token de la SPA lo
+    # corta el navegador y en este servidor no queda ni una línea de log.
+    allowed-origins: http://localhost:3000,http://localhost:5173,http://localhost:5174

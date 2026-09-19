@@ -51,7 +51,7 @@ data:
   # redirect_uris, y su origen AQUÍ. Olvidar la segunda no deja rastro en
   # ningún log de este servidor -el navegador corta la petición antes de
   # enviarla-, y es el fallo más caro de diagnosticar de todo el rediseño.
-  CORS_ALLOWED_ORIGINS: "https://admin.mobile-americas.com,https://fgf.mobile-americas.com"
+  CORS_ALLOWED_ORIGINS: "https://admin.mobile-americas.com,https://fgf.mobile-americas.com,https://tf.mobile-americas.com"
 ---
 apiVersion: "apps/v1"
 kind: "Deployment"
