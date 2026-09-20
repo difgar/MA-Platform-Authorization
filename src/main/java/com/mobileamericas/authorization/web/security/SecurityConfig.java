@@ -20,6 +20,7 @@ import org.springframework.security.config.annotation.web.configurers.oauth2.ser
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
@@ -287,7 +288,8 @@ class SecurityConfig {
             // que sin este @Qualifier la inyección es ambigua entre ese bean y
             // el nuestro: NoUniqueBeanDefinitionException al arrancar.
             @Qualifier("corsConfigurationSource") CorsConfigurationSource cors,
-            UsuarioOidcService usuarios)
+            UsuarioOidcService usuarios,
+            RegisteredClientRepository clientes)
             throws Exception {
         return http
                 .cors(c -> c.configurationSource(cors))
@@ -306,7 +308,14 @@ class SecurityConfig {
                         // y el motivo del rechazo no viaja en ese 302: quien
                         // intenta entrar no puede saber por qué no puede. Ver
                         // RespuestaDeLoginFallido.
-                        .failureHandler(new RespuestaDeLoginFallido()))
+                        .failureHandler(new RespuestaDeLoginFallido(
+                                // Un HttpSessionRequestCache nuevo LEE lo que
+                                // guardó el de la @Order(1): los dos usan el
+                                // mismo atributo de sesión. Es esa petición
+                                // -la de /oauth2/authorize- la que sabe de qué
+                                // aplicación viene el usuario; esta cadena no
+                                // guarda ninguna.
+                                new HttpSessionRequestCache(), clientes)))
                 // Esta cadena no guarda NINGUNA petición: la única a la que
                 // hay que volver después del login es la de /oauth2/authorize,
                 // y ésa la guarda la cadena @Order(1). Guardar aquí sólo

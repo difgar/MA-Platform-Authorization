@@ -80,7 +80,7 @@ public class UsuarioOidcService implements OAuth2UserService<OidcUserRequest, Oi
         var identidad = email.toLowerCase(Locale.ROOT);
 
         var usuario = usuarios.findByEmail(identidad)
-                .orElseThrow(() -> rechazar("usuario_desconocido", identidad,
+                .orElseThrow(() -> rechazar("usuario_no_registrado", identidad,
                         "El usuario no está dado de alta en la plataforma."));
 
         // Dado de baja se cierra en la puerta, no tres tareas más abajo.
@@ -92,7 +92,7 @@ public class UsuarioOidcService implements OAuth2UserService<OidcUserRequest, Oi
         // ciclo login OK -> access_denied -> la SPA reintenta login -> sesión
         // válida -> access_denied. Un rechazo aquí corta todo eso.
         //
-        // Código propio y no el de 'usuario_desconocido': estar de baja y no
+        // Código propio y no el de 'usuario_no_registrado': estar de baja y no
         // existir son cosas distintas para quien lea el log.
         if (!usuario.active()) {
             throw rechazar("usuario_inactivo", identidad,

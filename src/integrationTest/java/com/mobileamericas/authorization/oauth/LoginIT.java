@@ -234,7 +234,7 @@ public abstract class LoginIT extends BaseOauthIT {
         assertThatThrownBy(() -> iniciarSesionCon("inactivo@pendiente.local"))
                 .hasMessageContaining("dado de baja")
                 // Y no por el otro motivo: la fila existe, así que un rechazo
-                // por 'usuario_desconocido' sería un diagnóstico falso.
+                // por 'usuario_no_registrado' sería un diagnóstico falso.
                 .hasMessageContaining("usuario_inactivo");
 
         assertThat(sesionesDe("inactivo@pendiente.local")).isEqualTo(sesionesSuyasAntes);

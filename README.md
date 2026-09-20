@@ -405,21 +405,41 @@ pruebas, no un `@Bean`.
 
 ## Qué ve quien no puede entrar
 
-Decisión tomada, no efecto colateral: una persona que se autentica en Google
-pero **no está dada de alta** (o está de baja, o Google no da su email como
-verificado) recibe un **401 con un JSON** en formato de error de OAuth 2.0
-(`RespuestaDeLoginFallido`), y lo ve crudo en el navegador.
+Una persona que se autentica en Google pero **no está dada de alta** —o está de
+baja, o Google no da su email como verificado— **vuelve a la aplicación desde la
+que vino**, con el motivo en la URL:
 
-Se acepta así a propósito. Este servicio **no sirve HTML**, y la alternativa
-—redirigir a una página del panel con el motivo en un parámetro— exige registrar
-esa URL en algún sitio, porque si no es un *redirect abierto*: el mismo agujero
-que el logout ya cierra con `post_logout_redirect_uris`. Poner ese registro para
-una pantalla de error no compensa mientras los usuarios los da de alta un
-administrador y el rechazo es raro. El motivo concreto viaja en
-`error_description`, así que quien lo reciba puede decir por qué.
+```
+https://admin.mobile-americas.com/callback?error=access_denied&error_reason=usuario_no_registrado&state=...
+```
 
-Si algún día se cambia de opinión, el destino tiene que salir de una lista
-blanca, no de un parámetro de la petición.
+Dos códigos, en capas:
+
+| parámetro | qué lleva |
+|---|---|
+| `error` | siempre `access_denied`, que es **estándar de OAuth 2.0**: un cliente genérico que no conozca nada de esta plataforma se comporta bien |
+| `error_reason` | el motivo concreto: `usuario_no_registrado`, `usuario_inactivo`, `email_no_verificado`, `email_ausente` |
+
+Un consumidor traduce por `error_reason` cuando lo reconoce y **cae al mensaje
+de `access_denied` cuando no**, así que un motivo nuevo nunca llega crudo a una
+pantalla y esta lista se puede ampliar sin coordinar con nadie.
+
+**El `redirect_uri` se valida contra `auth_app`**, igual que en `/authorize` y
+en el logout. Sin esa comprobación esto sería un *redirect abierto* servido por
+la pantalla que el usuario acaba de reconocer como fiable.
+
+**Queda un JSON con 401 para cuando no hay a dónde volver**: quien llega al
+callback de Google directamente, con la sesión caducada, o pidiendo un
+`client_id` que ya no está registrado. Ahí no hay `redirect_uri` que valga y
+adivinar una sería peor.
+
+> **Por qué se distingue «no estás dado de alta» de «estás dado de baja».**
+> Parece enumeración de cuentas y casi no lo es: sólo se lo cuenta a quien **ya
+> ha completado el login en Google con esa identidad**, así que para preguntar
+> por un correo ajeno habría que controlar esa cuenta. A cambio, la persona sabe
+> si tiene que **pedir acceso** o **reclamar una baja**, que son acciones
+> distintas. El `error` estándar no distingue; el detalle vive sólo en
+> `error_reason`.
 
 ## Despliegue
 
