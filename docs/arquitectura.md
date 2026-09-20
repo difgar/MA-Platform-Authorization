@@ -97,40 +97,36 @@ redirección, 15 minutos serían unos 32 parpadeos en una jornada.
 
 ## 3. Qué viaja dentro del token
 
-### ID token — quién eres
+Dos tokens, con dos trabajos distintos:
 
-| claim | qué es |
-|---|---|
-| `sub` | el email, en minúsculas |
-| `uid` | `auth_user.id` — **el único identificador que no cambia nunca** |
-| `email` | el mismo email |
-| `apps` | `[{name, url}]` — dónde **obtendría un token** este usuario |
-| `name`, `picture` | si existen. **Ausentes**, no `null`, cuando no se saben |
+| | para qué | qué NO lleva |
+|---|---|---|
+| **ID token** | quién eres — lo consume la SPA | `roles` ni `permissions`: es un documento que el navegador puede guardar y que sobrevive horas a un cambio de rol |
+| **Access token** | qué puedes — lo consume el resource server | nada que sirva para mostrar en pantalla |
 
-### Access token — qué puedes hacer
+**Lo que aísla una aplicación de otra es el `aud`**, que lleva el `client_id`. Un
+token de `admin` no vale en `trafficflow` — pero sólo si el consumidor configura
+`audiences`, porque **sin esa propiedad el `aud` no se comprueba**.
 
-| claim | qué es |
-|---|---|
-| `sub`, `uid`, `email` | igual que arriba |
-| `aud` | el `client_id` — **lo que aísla una aplicación de otra** |
-| `roles` | nombres de rol **en esa aplicación** |
-| `permissions` | `recurso:verbo` ya expandidos; los comodines nunca viajan |
-| `scope` | `openid`, y nada más |
+Dos reglas que se olvidan y no avisan cuando se olvidan:
 
-### Las cuatro propiedades que configura un consumidor
+- **`email` para mostrar, `uid` para guardar.** `sub` y `email` llevan el correo,
+  y un correo es mutable: quien guarde cualquiera de los dos como clave ajena se
+  queda con una referencia rota el día que alguien cambie de dirección, sin que
+  nada falle. `uid` es `auth_user.id` y no cambia nunca.
+- **Los permisos son `recurso:verbo`, con dos puntos**, ya expandidos y sin
+  prefijo de aplicación. Los comodines nunca viajan.
 
-```yaml
-spring.security.oauth2.resourceserver.jwt:
-  issuer-uri: https://auth.mobile-americas.com/authorization-api
-  audiences: <el client_id de ESTA aplicación>
-  authorities-claim-name: permissions
-  authority-prefix: ""
-```
-
-`issuer-uri` y no `jwk-set-uri`: la diferencia es entre «este token está bien
-firmado» y «este token lo emití yo».
-
----
+> ### 📋 El contrato completo, claim a claim, está en el README
+>
+> **[README · Lo que trae el token](../README.md#lo-que-trae-el-token)** —
+> ésa es la copia canónica, la que se actualiza cuando el contrato cambia.
+>
+> No se repite aquí a propósito: una tabla duplicada son dos cosas que deben
+> concordar sin que nada las compare, que es exactamente la forma del bug que
+> este servicio existe para no volver a tener. Si necesitas el detalle en otro
+> documento, **enlaza** — un enlace que se queda viejo se ve; una tabla
+> desincronizada, no.
 
 ## 4. Las aplicaciones registradas
 

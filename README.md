@@ -179,6 +179,12 @@ Las cuatro propiedades son necesarias, no sólo la primera:
 
 ### Lo que trae el token
 
+> **Ésta es la copia canónica del contrato de claims.** Si necesitas la tabla en
+> otro documento —de este repositorio o de otro— enlaza aquí en vez de copiarla:
+> un enlace que se queda viejo se ve, una tabla desincronizada no. Para la forma
+> del sistema, ver [docs/arquitectura.md](docs/arquitectura.md).
+
+
 Access token:
 
 | claim | qué es |
