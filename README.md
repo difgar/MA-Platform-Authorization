@@ -424,29 +424,41 @@ Dos códigos, en capas:
 | parámetro | qué lleva |
 |---|---|
 | `error` | siempre `access_denied`, que es **estándar de OAuth 2.0**: un cliente genérico que no conozca nada de esta plataforma se comporta bien |
-| `error_reason` | el motivo concreto: `usuario_no_registrado`, `usuario_inactivo`, `email_no_verificado`, `email_ausente` |
+| `error_reason` | el motivo concreto — **los siete, en la tabla de abajo** |
 
 Un consumidor traduce por `error_reason` cuando lo reconoce y **cae al mensaje
 de `access_denied` cuando no**, así que un motivo nuevo nunca llega crudo a una
 pantalla y esta lista se puede ampliar sin coordinar con nadie.
 
-> **Dos rechazos distintos llegan con el mismo `error`.** No se pueden tratar
-> igual:
+### Los siete motivos que emite este servicio
+
+Ésta es la lista completa: **no hay más, y no están enumerados en ningún otro
+sitio de este documento**. Si añades uno, se añade aquí.
+
+| `error_reason` | dónde se rechaza | qué pasó | qué puede hacer la persona |
+|---|---|---|---|
+| `usuario_no_registrado` | login | la identidad es válida pero no está dada de alta | pedir acceso a un administrador |
+| `usuario_inactivo` | login | está dada de alta y **desactivada** | reclamar la baja a un administrador |
+| `email_no_verificado` | login | Google no da el correo como verificado | **verificarlo él mismo** en su cuenta de Google |
+| `email_ausente` | login | Google no entregó el correo | reintentar; depende del consentimiento que diera |
+| `sin_rol` | `/oauth2/authorize` | no tiene **ningún rol en esa aplicación** | pedir acceso **a esa aplicación** |
+| `access_denied` | login | **Google no completó**: la persona canceló | reintentar |
+| `login_fallido` | login | cualquier otro fallo, resumido sin detalle a propósito | reintentar |
+
+> **Ojo con `access_denied` y `sin_rol`: llegan los dos con `error=access_denied`
+> y no significan lo mismo.** El primero es «canceló»; el segundo, «no tiene
+> permiso aquí». Confundirlos manda a *pedir un permiso a quien ya lo tiene*.
 >
-> | qué llega | qué pasó | qué decirle a la persona |
-> |---|---|---|
-> | `error_reason=access_denied` | Google no completó: **canceló** | «Has cancelado el acceso» |
-> | `error_reason=sin_rol` | rechazo en `/authorize`: **no tiene rol en esa app** | «Tu cuenta no tiene permiso aquí» |
-> | **sin `error_reason`** | no lo emite este servicio | el mensaje genérico: «no sabemos qué pasó» |
+> Y **la ausencia de `error_reason` no significa nada**, a propósito: un hueco lo
+> produce cualquiera —una caída de red, una respuesta a medias, un consumidor
+> que aún no conoce el contrato— y si un significado viajara ahí, todos esos
+> casos lo heredarían. Por eso `sin_rol` es explícito y no se deduce del
+> silencio. Ante un `error_reason` desconocido o ausente: **mensaje genérico**,
+> nunca una afirmación sobre permisos.
 >
-> Los dos primeros llegan con `error=access_denied` y **no significan lo
-> mismo**: confundirlos manda a *pedir un permiso a quien ya lo tiene*.
->
-> La tercera fila importa tanto como las otras dos. **La ausencia de
-> `error_reason` no significa nada**, a propósito: un hueco lo produce
-> cualquiera —una caída de red, una respuesta a medias, un consumidor que aún
-> no conoce el contrato— y si un significado viajara ahí, todos esos casos lo
-> heredarían. Por eso `sin_rol` es explícito.
+> Un consumidor puede añadir motivos **propios** para lo que le pase a él —una
+> avería de red suya, por ejemplo— siempre que no reutilice estos siete. Los
+> suyos los define él; éstos, este documento.
 
 **El `redirect_uri` se valida contra `auth_app`**, igual que en `/authorize` y
 en el logout. Sin esa comprobación esto sería un *redirect abierto* servido por
