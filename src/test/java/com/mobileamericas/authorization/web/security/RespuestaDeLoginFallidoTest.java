@@ -69,6 +69,29 @@ class RespuestaDeLoginFallidoTest {
         assertThat(respuesta.getRedirectedUrl()).contains("error_reason=usuario_inactivo");
     }
 
+    /**
+     * El caso que más veces va a ocurrir, y el único cuyo código NO lo pone
+     * este servicio: cuando alguien cierra la ventana de Google, el proveedor
+     * responde 'access_denied' y ese código llega tal cual a 'error_reason'.
+     *
+     * Se fija aquí, en el lado que lo emite, porque un consumidor puede
+     * protegerse de un motivo que no conoce pero no puede notar si un día este
+     * código cambia. Y hay una trampa detrás: 'error_reason=access_denied'
+     * significa «canceló», mientras que un rechazo SIN error_reason -el de
+     * AccesoAlClienteValidator en /authorize- significa «no tiene rol aquí».
+     * Las dos llegan con error=access_denied y no son lo mismo: confundirlas
+     * manda a pedir un permiso a quien ya lo tiene.
+     */
+    @Test
+    void el_codigo_que_pone_google_al_cancelar_viaja_tal_cual() throws Exception {
+        conPeticionGuardada("admin", DESTINO, "xyz").onAuthenticationFailure(
+                peticion, respuesta, rechazo("access_denied"));
+
+        assertThat(respuesta.getRedirectedUrl())
+                .contains("error=access_denied")
+                .contains("error_reason=access_denied");
+    }
+
     @Test
     void una_redireccion_no_registrada_no_se_usa_jamas() throws Exception {
         // Sin esta comprobación esto sería un redirect abierto servido por la

@@ -424,6 +424,18 @@ Un consumidor traduce por `error_reason` cuando lo reconoce y **cae al mensaje
 de `access_denied` cuando no**, así que un motivo nuevo nunca llega crudo a una
 pantalla y esta lista se puede ampliar sin coordinar con nadie.
 
+> **Dos rechazos distintos llegan con el mismo `error`.** No se pueden tratar
+> igual:
+>
+> | qué llega | qué pasó | qué decirle a la persona |
+> |---|---|---|
+> | `error_reason=access_denied` | Google no completó: **canceló** | «Has cancelado el acceso» |
+> | sin `error_reason` | rechazo en `/authorize`: **no tiene rol en esa app** | «Tu cuenta no tiene permiso aquí» |
+>
+> El primero trae `error_reason` porque lo emite este handler; el segundo no,
+> porque lo emite `AccesoAlClienteValidator`. Confundirlos manda a **pedir un
+> permiso a quien ya lo tiene**.
+
 **El `redirect_uri` se valida contra `auth_app`**, igual que en `/authorize` y
 en el logout. Sin esa comprobación esto sería un *redirect abierto* servido por
 la pantalla que el usuario acaba de reconocer como fiable.
