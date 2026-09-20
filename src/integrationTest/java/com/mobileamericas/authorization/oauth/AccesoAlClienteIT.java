@@ -158,4 +158,26 @@ public abstract class AccesoAlClienteIT extends BaseOauthIT {
                 .startsWith("https://admin.mobile-americas.com/callback")
                 .contains("error=access_denied");
     }
+
+    /**
+     * El motivo viaja ESCRITO, no por la ausencia de uno.
+     *
+     * Antes, un consumidor sólo podía reconocer este rechazo porque no traía
+     * 'error_reason' — o sea, un significado que viajaba en un hueco. Y un
+     * hueco lo produce cualquiera: la integración de TrafficFlow encontró que
+     * una caída de red o una respuesta a medias tampoco traen motivo, así que
+     * la pantalla común le decía «tu cuenta no tiene permiso» a alguien cuyo
+     * problema era internet. Con el motivo escrito, la ausencia deja de decir
+     * nada y cae al mensaje genérico, que es lo correcto para «no sé qué pasó».
+     */
+    @Test
+    void el_rechazo_dice_su_motivo_en_vez_de_dejarlo_en_el_hueco() {
+        var cookie = iniciarSesionCon("usuario2@pendiente.local");
+
+        var r = pedirAutorizacion(cookie, "fgf");
+
+        assertThat(r.getHeaders().getLocation().toString())
+                .contains("error=access_denied")
+                .contains("error_reason=sin_rol");
+    }
 }

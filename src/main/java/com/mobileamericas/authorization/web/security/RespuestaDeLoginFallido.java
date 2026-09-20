@@ -142,7 +142,9 @@ class RespuestaDeLoginFallido implements AuthenticationFailureHandler {
         // casar esta respuesta con la petición que hizo.
         Optional.ofNullable(parametro(guardada, "state"))
                 .ifPresent(state -> destino.queryParam("state", state));
-        return Optional.of(destino.build().toUriString());
+        // encode(): el state es texto libre elegido por el cliente y puede
+        // traer cualquier cosa. Sin codificar, una URI ilegal.
+        return Optional.of(destino.build().encode().toUriString());
     }
 
     /**

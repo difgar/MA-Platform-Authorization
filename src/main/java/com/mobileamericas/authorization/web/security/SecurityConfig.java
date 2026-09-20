@@ -181,11 +181,18 @@ class SecurityConfig {
                     // (code_challenge) y grant_type no dependen de esta
                     // sustitución: el framework los aplica alrededor, fuera
                     // del hueco que ocupa este validador.
-                    cfg.authorizationEndpoint(a -> a.authenticationProviders(ps -> ps.forEach(p -> {
-                        if (p instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider prov) {
-                            prov.setAuthenticationValidator(validador);
-                        }
-                    })));
+                    cfg.authorizationEndpoint(a -> a
+                            .authenticationProviders(ps -> ps.forEach(p -> {
+                                if (p instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider prov) {
+                                    prov.setAuthenticationValidator(validador);
+                                }
+                            }))
+                            // Para que ese rechazo lleve su motivo EXPLÍCITO y
+                            // no se reconozca por la ausencia de uno: un
+                            // significado que viaja en un hueco lo produce
+                            // cualquiera, incluida una caída de red del propio
+                            // consumidor. Ver RespuestaDeAuthorizeFallido.
+                            .errorResponseHandler(new RespuestaDeAuthorizeFallido()));
                 })
                 .authorizeHttpRequests(a -> a.anyRequest().authenticated())
                 // La SPA canjea el código con POST /oauth2/token desde su propio

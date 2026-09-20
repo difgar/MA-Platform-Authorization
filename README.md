@@ -430,11 +430,17 @@ pantalla y esta lista se puede ampliar sin coordinar con nadie.
 > | qué llega | qué pasó | qué decirle a la persona |
 > |---|---|---|
 > | `error_reason=access_denied` | Google no completó: **canceló** | «Has cancelado el acceso» |
-> | sin `error_reason` | rechazo en `/authorize`: **no tiene rol en esa app** | «Tu cuenta no tiene permiso aquí» |
+> | `error_reason=sin_rol` | rechazo en `/authorize`: **no tiene rol en esa app** | «Tu cuenta no tiene permiso aquí» |
+> | **sin `error_reason`** | no lo emite este servicio | el mensaje genérico: «no sabemos qué pasó» |
 >
-> El primero trae `error_reason` porque lo emite este handler; el segundo no,
-> porque lo emite `AccesoAlClienteValidator`. Confundirlos manda a **pedir un
-> permiso a quien ya lo tiene**.
+> Los dos primeros llegan con `error=access_denied` y **no significan lo
+> mismo**: confundirlos manda a *pedir un permiso a quien ya lo tiene*.
+>
+> La tercera fila importa tanto como las otras dos. **La ausencia de
+> `error_reason` no significa nada**, a propósito: un hueco lo produce
+> cualquiera —una caída de red, una respuesta a medias, un consumidor que aún
+> no conoce el contrato— y si un significado viajara ahí, todos esos casos lo
+> heredarían. Por eso `sin_rol` es explícito.
 
 **El `redirect_uri` se valida contra `auth_app`**, igual que en `/authorize` y
 en el logout. Sin esa comprobación esto sería un *redirect abierto* servido por
