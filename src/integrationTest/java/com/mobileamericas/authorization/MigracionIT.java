@@ -179,7 +179,7 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
-    void el_catalogo_de_trafficflow_tiene_exactamente_los_veinticinco_permisos() {
+    void el_catalogo_de_trafficflow_tiene_exactamente_los_veintiseis_permisos() {
         // containsExactlyInAnyOrder, no contains: un permiso de más -por
         // ejemplo, un 'postbacks:reenviar' colado por error- es una concesión
         // que nadie pidió y debe hacer fallar esta prueba tanto como uno de menos.
@@ -206,6 +206,10 @@ public abstract class MigracionIT extends BaseIT {
                 "endpoints:crear", "endpoints:leer", "endpoints:editar",
                 "postbacks:leer",
                 "reenvios:crear",
+                // V8: el barrido a demanda de postbacks (POST /postbacks/barrido) crea un
+                // barrido. Recurso propio y verbo 'crear', como reenvios:crear, porque el
+                // verbo es un enum cerrado.
+                "barridos:crear",
                 "informe:leer",
                 "auditoria:leer",
                 "cache:leer",
