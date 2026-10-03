@@ -18,5 +18,7 @@ backend del LB) está en [`../terraform/`](../terraform/).
   contra la instancia real (PostgreSQL 18; los tests corren en 17): 10 tablas, las tres
   apps con su URL, `trafficflow` en `traffic.`. La base quedó vacía: la llena Flyway al
   arrancar el auth.
-- **Conexiones:** el auth abre como mucho 3, y aparece como `ma-platform-auth/<revisión>`
-  en `pg_stat_activity`. La instancia tiene 50 para todos.
+- **Conexiones:** pool de 3 por instancia, y aparece como `ma-platform-auth/<revisión>` en
+  `pg_stat_activity`. Durante un despliegue conviven dos revisiones: hasta 6. **El rol
+  `ma_auth` tiene `CONNECTION LIMIT 6`**, el tope duro en la base (2026-10-03). La
+  instancia tiene 50 para todos.

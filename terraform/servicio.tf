@@ -104,9 +104,12 @@ resource "google_cloud_run_v2_service" "auth" {
         name  = "JWT_KEY_LOCATIONS"
         value = "file:/etc/ma-auth/keys/active.jwk"
       }
+      # cloudSqlRefreshStrategy=lazy: con cpu_idle el conector no puede renovar su
+      # certificado en segundo plano, asi que lo renueva al conectar (recomendacion de
+      # Google para este modo; revision final, 2026-10-03).
       env {
         name  = "DB_MA_PLATFORM_URL"
-        value = "jdbc:postgresql:///ma_auth?cloudSqlInstance=${var.cloudsql_instance}&socketFactory=com.google.cloud.sql.postgres.SocketFactory"
+        value = "jdbc:postgresql:///ma_auth?cloudSqlInstance=${var.cloudsql_instance}&socketFactory=com.google.cloud.sql.postgres.SocketFactory&cloudSqlRefreshStrategy=lazy"
       }
 
       dynamic "env" {

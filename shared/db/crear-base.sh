@@ -47,6 +47,11 @@ NUEVA_PW="$(secreto ma-auth-db-password)" psql_ postgres <<SQL
 \getenv pw NUEVA_PW
 select 'create role $ROL login' where not exists (select from pg_roles where rolname = '$ROL')\gexec
 alter role $ROL with login password :'pw';
+-- Tope DURO en la base compartida (50 conexiones para tres proyectos). El pool es de 3,
+-- pero en cada despliegue conviven la revision vieja y la nueva: 6, y no 3, para no
+-- bloquear el rollout. Sin esto el "3" solo era una promesa del pool (revision final,
+-- 2026-10-03).
+alter role $ROL connection limit 6;
 -- postgres tiene que ser miembro para crear una base cuyo dueno es otro rol (PG16+).
 grant $ROL to $ADMIN;
 select 'create database $BASE owner $ROL' where not exists (select from pg_database where datname = '$BASE')\gexec
@@ -57,7 +62,7 @@ SQL
 # --- Y se comprueba, en vez de fiarse de los CREATE ------------------------------
 echo "Comprobacion:"
 psql_ postgres -At <<SQL
-select 'rol          ' || rolname || ' super=' || rolsuper from pg_roles where rolname = '$ROL';
+select 'rol          ' || rolname || ' super=' || rolsuper || ' limite=' || rolconnlimit from pg_roles where rolname = '$ROL';
 select 'base         ' || datname || ' dueno=' || pg_get_userbyid(datdba) from pg_database where datname = '$BASE';
 select 'public       connect=' || has_database_privilege('public', '$BASE', 'CONNECT');
 SQL

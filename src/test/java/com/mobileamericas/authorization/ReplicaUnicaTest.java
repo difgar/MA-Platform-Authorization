@@ -57,4 +57,17 @@ class ReplicaUnicaTest {
                         + "intermitente. %s", PRIMERO)
                 .isEqualTo(1);
     }
+
+    /**
+     * Con la CPU solo durante peticiones (cpu_idle), el conector de Cloud SQL no puede
+     * renovar su certificado en segundo plano: tras un rato quieto, el primer login abriria
+     * conexion con el certificado caducado. La estrategia "lazy" lo renueva al conectar.
+     * Revision final del 2026-10-03.
+     */
+    @Test
+    void con_cpu_solo_en_peticiones_el_conector_renueva_al_conectar() throws IOException {
+        assertThat(TerraformDelAuth.env("DB_MA_PLATFORM_URL"))
+                .as("con cpu_idle = true, la URL del conector necesita cloudSqlRefreshStrategy=lazy")
+                .contains("cloudSqlRefreshStrategy=lazy");
+    }
 }
