@@ -8,6 +8,8 @@ backend del LB) está en [`../terraform/`](../terraform/).
 | Recurso | Script | Qué hace | Cómo se deshace |
 |---|---|---|---|
 | Base `ma_auth` | `db/crear-base.sh` | Secretos `ma-auth-db-{user,password}`, rol `ma_auth` sin superusuario, base sin CONNECT para PUBLIC | Ver cabecera del script |
+| Usuarios iniciales | `db/usuarios.sql` | `it@mobile-americas.com` y `difgar@gmail.com`, admin de `admin` y de `trafficflow` (sustituyen los marcadores de V2) | Volver a los marcadores o desactivar (`active = false`) |
+| URL map `ma-platform-lb` | `RECLAIM_HOSTS=auth.mobile-americas.com urlmap/apply.sh urlmap/auth.yaml urlmap/auth-tests.yaml` | `auth.` pasa a la regla `ma-platform-auth`: `/authorization-api/*` → Cloud Run; lo demás, a `map-bk-default-prod` como antes. Aplicado el 2026-10-03 03:32 UTC | `urlmap/apply.sh --remove-own --apply` (`auth.` cae en el default del url-map, el mismo de antes) |
 | Valores de los secretos | `secretos/cargar.sh` | Cliente OAuth de Google (desde su `client_secret.json`, que vive FUERA del repo, en `~/Documents/sms-americas/secretos-locales/`) y la JWK de firma (RSA 2048, `GenerarJwk.java`). Idempotente: no toca un secreto que ya tiene versión | `gcloud secrets versions destroy` de la versión |
 
 ## Medido
