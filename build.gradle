@@ -54,6 +54,10 @@ dependencies {
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.postgresql:postgresql'
+    // El conector, no la IP: en produccion ma_auth vive en ma-platform-db-pgsql, que exige
+    // connectorEnforcement=REQUIRED y la comparten tres proyectos. Misma version que MA-Portal
+    // y TrafficFlow.
+    runtimeOnly 'com.google.cloud.sql:postgres-socket-factory:1.30.0'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 

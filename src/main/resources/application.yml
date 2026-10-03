@@ -30,9 +30,15 @@ spring:
     username: ${DB_MA_PLATFORM_USER}
     password: ${DB_MA_PLATFORM_PASSWORD}
     hikari:
-      minimum-idle: 5
-      maximum-pool-size: 20
+      # 3 y no 20: en produccion la base es COMPARTIDA (ma-platform-db-pgsql, 50 conexiones
+      # para tres proyectos) y el auth es una sola instancia con poco trafico.
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      maximum-pool-size: ${DB_POOL_MAX:3}
       pool-name: AuthHikariCP
+      data-source-properties:
+        # Quien consume cada conexion, en pg_stat_activity: ma-platform-auth/<revision de
+        # Cloud Run>, o /local fuera de ella. Se recorta a 63: ver NombreDeConexion.
+        ApplicationName: ${DB_APPLICATION_NAME:ma-platform-auth/${K_REVISION:local}}
   jpa:
     hibernate.ddl-auto: validate     # Flyway manda; Hibernate sólo comprueba
     open-in-view: false
