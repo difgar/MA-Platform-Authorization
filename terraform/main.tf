@@ -12,6 +12,14 @@ resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = google_service_account.auth.member
+
+  # Solo ESTA instancia, no todas las de sms-ma-platform (que tambien tiene la MySQL de la
+  # plataforma): la condicion acota el permiso aunque el rol se conceda en el proyecto
+  # (revision final, 2026-10-03).
+  condition {
+    title      = "solo-ma-platform-db-pgsql"
+    expression = "resource.name == 'projects/sms-ma-platform/instances/ma-platform-db-pgsql' && resource.type == 'sqladmin.googleapis.com/Instance'"
+  }
 }
 
 # --- Imagenes -----------------------------------------------------------------------

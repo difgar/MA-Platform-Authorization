@@ -157,6 +157,7 @@ inicia sesión.
 - **fgf.** Sigue roto hasta que se reescriba con OIDC.
 - **Publicar la app de Google.** En «Prueba» solo entran los usuarios de prueba, hasta 100.
   Cada usuario nuevo de la plataforma hay que darlo de alta también allí, o publicar la app.
-- **El secreto del cliente de Google estuvo en un fichero suelto.** Rotarlo en el mismo
-  cliente después del despliegue.
+- **El secreto del cliente de Google estuvo en un fichero suelto** (sin ignorar en git, sin rastro de
+  que se subiera). Se valoró rotarlo y **difgar decidió no hacerlo** (2026-10-03): el fichero ya está
+  fuera del repo e ignorado.
 - **La MySQL vieja** (`ma_platform_auth`) se queda como está hasta que se decida retirarla.

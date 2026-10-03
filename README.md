@@ -209,7 +209,7 @@ access token está atado a un `aud` y no puede decir nada de las demás.
 ```json
 "apps": [
   {"name": "admin",       "url": "https://admin.mobile-americas.com"},
-  {"name": "trafficflow", "url": "https://tf.mobile-americas.com"}
+  {"name": "trafficflow", "url": "https://traffic.mobile-americas.com"}
 ]
 ```
 
@@ -333,12 +333,12 @@ Lo que hay que tener en cuenta:
 
 ## Réplicas: hoy sólo una, y no es una decisión de capacidad
 
-**`replicas: 1` y el HPA `min = max = 1` son load-bearing. No los subas.**
+**El máximo de UNA instancia en Cloud Run (`max_instance_count = 1`, `terraform/servicio.tf`) es load-bearing. No lo subas.** (En GKE era `replicas: 1` y el HPA `min = max = 1`; lo vigila `ReplicaUnicaTest`.)
 
 El motivo: **no hay ningún bean `OAuth2AuthorizationService`**, y Spring Boot
 4.1.1 no autoconfigura ninguno (sólo `RegisteredClientRepository`,
 `AuthorizationServerSettings` y el `JwtDecoder`). Así que Spring Authorization
-Server guarda las autorizaciones en **memoria del pod**
+Server guarda las autorizaciones en **memoria de la instancia**
 (`InMemoryOAuth2AuthorizationService`).
 
 Dos consecuencias que hay que tener escritas:
@@ -347,15 +347,15 @@ Dos consecuencias que hay que tener escritas:
   porta con sus 33 columnas y `MigracionIT` comprueba que el porte es correcto,
   pero **nadie la escribe ni la lee**. No crece, no hay que limpiarla, y no
   sirve para auditar nada. Es esquema por adelantado, no almacenamiento vivo.
-- **Un código de autorización emitido por un pod no se puede canjear en otro.**
-  Con dos réplicas y sin sesión pegajosa, una fracción de los canjes falla con
+- **Un código de autorización emitido por una instancia no se puede canjear en otra.**
+  Con dos instancias y sin sesión pegajosa, una fracción de los canjes falla con
   `invalid_grant`, de forma intermitente, y el error no señala a ninguna parte.
-  La sesión SSO sobrevive al salto de pod; el código de autorización no.
+  La sesión SSO sobrevive al salto de instancia; el código de autorización no.
 
 ### La otra mitad: ese almacén en memoria no purga nunca
 
 No es sólo que no se pueda escalar; es que el almacén **crece sin límite
-mientras el pod vive**. Verificado en el bytecode de
+mientras la instancia vive**. Verificado en el bytecode de
 `InMemoryOAuth2AuthorizationService` 7.1.1:
 
 - `initializedAuthorizations` (las autorizaciones a medias, las que tienen
@@ -378,11 +378,12 @@ que son ~12 entradas por usuario y aplicación al día. Con unas decenas de
 usuarios y tres paneles, son miles de entradas de varios KB entre despliegue y
 despliegue.
 
-El pod tiene `limits.memory: 490Mi` y `-XX:MaxRAMPercentage=50` (unos 245 MB de
-heap), así que **esto no revienta hoy ni mañana: revienta semanas después de un
-despliegue**, con un OOM sin causa aparente, y `livenessProbe` reinicia el pod
-—lo que limpia el mapa y, con él, la evidencia—. Un despliegue frecuente lo
-esconde del todo.
+La instancia tiene 1 GiB y `-XX:MaxRAMPercentage=50` (unos 512 MB de heap), así que
+esto no revienta hoy ni mañana. Y **desde el 2026-10-03 el servicio tiene mínimo 0
+instancias**: cada vez que se queda sin uso, Cloud Run apaga la instancia y el mapa se
+vacía. Con el tráfico de hoy, esa es la purga. Si algún día se sube el mínimo a 1, el
+riesgo vuelve: un OOM semanas después de un despliegue, sin causa aparente, y la sonda
+de vida reiniciando la instancia —lo que limpia el mapa y, con él, la evidencia—.
 
 **Qué hacer mientras tanto**, porque el arreglo de verdad es el
 `OAuth2AuthorizationService` persistente de más abajo:
@@ -391,9 +392,10 @@ esconde del todo.
   `health,info`. Para mirarlo hay que añadir `metrics` a esa lista (no lo hace
   público: la cadena de actuator sólo abre sin autenticar `health` e `info`), o
   mirar la memoria del contenedor en Cloud Run.
-- **Reiniciar el pod de vez en cuando** si pasan semanas sin desplegar: es la
-  única purga que existe. Con una sola réplica, ese reinicio corta los canjes en
-  vuelo (unos segundos), no las sesiones SSO, que están en la base de datos.
+- **Con mínimo 1, reiniciar la instancia de vez en cuando** si pasan semanas sin
+  desplegar (una revisión nueva basta): es la única purga. Corta los canjes en vuelo
+  (unos segundos), no las sesiones SSO, que están en la base de datos. Con mínimo 0
+  lo hace Cloud Run solo.
 
 **Qué haría falta para poder escalar:** declarar un
 `JdbcOAuth2AuthorizationService`. **Se intentó en la fase 2 y se abortó**, y

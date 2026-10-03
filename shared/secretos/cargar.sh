@@ -27,8 +27,11 @@ campo() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.stdou
 campo client_id     | cargar ma-auth-google-client-id
 campo client_secret | cargar ma-auth-google-client-secret
 
-NIMBUS="$(find ~/.gradle/caches/modules-2/files-2.1/com.nimbusds/nimbus-jose-jwt/10.9.1 -name 'nimbus-jose-jwt-10.9.1.jar' | head -1)"
-[ -n "$NIMBUS" ] || { echo "NO: falta nimbus-jose-jwt 10.9.1 en la cache de gradle (./gradlew build)" >&2; exit 2; }
+# La MISMA version de nimbus que usa el auth, preguntada a gradle y no fijada aqui: con una
+# version escrita a mano, el script se rompia en la siguiente actualizacion (revision final).
+VERSION="$(cd ../.. && ./gradlew -q dependencies --configuration runtimeClasspath | grep -o 'com.nimbusds:nimbus-jose-jwt:[0-9.]*' | head -1 | cut -d: -f3)"
+NIMBUS="$(find ~/.gradle/caches/modules-2/files-2.1/com.nimbusds/nimbus-jose-jwt/"$VERSION" -name "nimbus-jose-jwt-$VERSION.jar" 2>/dev/null | head -1)"
+[ -n "$NIMBUS" ] || { echo "NO: falta nimbus-jose-jwt $VERSION en la cache de gradle (./gradlew build)" >&2; exit 2; }
 java -cp "$NIMBUS" GenerarJwk.java "$KID" | cargar ma-auth-jwk
 
 # Comprobacion SIN imprimir valores.

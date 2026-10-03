@@ -65,6 +65,18 @@ class EmisorDeProduccionTest {
     }
 
     /**
+     * El default de variables.tf no basta: un *.tfvars que fije 'issuer' lo pisa sin tocar
+     * ese fichero, y los otros tests seguirian en verde con produccion rota (revision
+     * final, 2026-10-03). El emisor se cambia en variables.tf, a la vista de este test.
+     */
+    @Test
+    void ningun_tfvars_pisa_el_emisor() throws IOException {
+        assertThat(TerraformDelAuth.tfvarsQueFijan("issuer"))
+                .as("estos ficheros fijan 'issuer' y pisarian el default vigilado de variables.tf")
+                .isEmpty();
+    }
+
+    /**
      * El redirect_uri de Google sufre exactamente lo mismo que el emisor, y
      * además tiene que coincidir carácter a carácter con lo registrado en la
      * consola de Google Cloud: si no, el login cae entero.
