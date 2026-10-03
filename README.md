@@ -496,7 +496,7 @@ porque las ADC de la máquina impersonan otra cuenta. No hay trigger: el de GKE
 
 Puntos que importa no olvidar:
 
-- **Una sola instancia** (Cloud Run mín 1 y máx 1). Ver «Réplicas»; lo vigila
+- **Como mucho una instancia** (Cloud Run mín 0 y máx 1; mín 0 desde el 2026-10-03: el primer login tras un rato parado espera ~15–20 s). Ver «Réplicas»; lo vigila
   `ReplicaUnicaTest` leyendo `terraform/servicio.tf`.
 - **El emisor se fija a mano** (`AUTH_ISSUER`, `var.issuer` en `terraform/variables.tf`).
   Sin él, Spring Authorization Server lo deriva de la petición entrante, y detrás del

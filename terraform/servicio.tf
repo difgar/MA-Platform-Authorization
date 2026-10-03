@@ -30,8 +30,12 @@ resource "google_cloud_run_v2_service" "auth" {
     scaling {
       # UNA y solo una: el almacen de autorizaciones (codigos en vuelo) vive en memoria
       # (application.yml). Con dos, un codigo emitido por una se canjearia en la otra y
-      # fallaria. Es lo que en GKE era replicas: 1 + HPA 1..1 (ReplicaUnicaTest).
-      min_instance_count = 1
+      # fallaria. Es lo que en GKE era replicas: 1 + HPA 1..1 (ReplicaUnicaTest): el MAXIMO
+      # es la invariante.
+      # Minimo 0 (difgar, 2026-10-03): poco trafico, y asi se evalua. El primer login tras
+      # un rato parado espera el arranque (~15-20 s); un login a medias se pierde si la
+      # instancia se apaga en ese segundo. Subir a 1 si la espera molesta (~10-15 USD/mes).
+      min_instance_count = 0
       max_instance_count = 1
     }
 

@@ -42,10 +42,12 @@ class ReplicaUnicaTest {
             este test se cambia con él, no antes.""";
 
     @Test
-    void cloud_run_arranca_con_una_instancia() throws IOException {
+    void cloud_run_no_arranca_mas_de_una() throws IOException {
+        // 0 o 1, y no "exactamente 1": con 0 se apaga sin trafico (difgar, 2026-10-03) y
+        // el primer login espera el arranque; lo que rompe el canje es que haya DOS.
         assertThat(TerraformDelAuth.escalado("min_instance_count"))
                 .as("Cloud Run min_instance_count. %s", PRIMERO)
-                .isEqualTo(1);
+                .isBetween(0, 1);
     }
 
     @Test
