@@ -88,11 +88,12 @@ tasks.named('test') {
     def artefacto = tasks.named('bootJar').flatMap { it.archiveFile }
     inputs.file(artefacto).withPropertyName('artefactoDeDespliegue')
     systemProperty 'ma.artefacto', artefacto.get().asFile.absolutePath
-    // Y el descriptor de Kubernetes, que EmisorDeProduccionTest y
-    // ReplicaUnicaTest leen por ruta de fichero: sin declararlo como entrada,
-    // cambiar 'replicas' o el ConfigMap deja la tarea UP-TO-DATE y esos dos
-    // guardianes ni se ejecutan.
-    inputs.file('kubernetes/deployment.yaml').withPropertyName('descriptorDeDespliegue')
+    // Y el terraform del despliegue (Cloud Run desde 2026-10-03; antes
+    // kubernetes/deployment.yaml), que EmisorDeProduccionTest y ReplicaUnicaTest leen
+    // por ruta de fichero: sin declararlo como entrada, cambiar las instancias o el
+    // emisor deja la tarea UP-TO-DATE y esos dos guardianes ni se ejecutan. Pasó al
+    // reapuntarlos: con el terraform estropeado a propósito seguían en verde.
+    inputs.files('terraform/servicio.tf', 'terraform/variables.tf').withPropertyName('descriptorDeDespliegue')
 }
 
 tasks.named('bootRun') {

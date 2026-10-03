@@ -13,14 +13,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * {@code replicas: 1} es corrección funcional, no capacidad.
  *
- * Hermano de {@link EmisorDeProduccionTest}, y con el mismo molde (SnakeYAML
- * sobre kubernetes/deployment.yaml) por el mismo motivo: hasta aquí, lo único
+ * Hermano de {@link EmisorDeProduccionTest}, y con el mismo molde (el despliegue de
+ * producción, hoy terraform/servicio.tf en Cloud Run; antes kubernetes/deployment.yaml
+ * con replicas 1 y HPA 1..1) por el mismo motivo: hasta aquí, lo único
  * que impedía subir las réplicas era un comentario, y una invariante que vive
  * sólo en un comentario no es una invariante. La revisión de rama pidió
  * convertirla en una que falle.
  *
  * Qué rompe subirlas: no hay ningún bean {@code OAuth2AuthorizationService},
- * así que las autorizaciones viven en memoria del pod
+ * así que las autorizaciones viven en memoria de la instancia
  * ({@code InMemoryOAuth2AuthorizationService}) y un código de autorización
  * emitido por un pod no se puede canjear en otro. Con dos réplicas y sin
  * sesión pegajosa, una fracción de los canjes falla con {@code invalid_grant},
@@ -30,8 +31,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * está prohibido: si no, lo único que aprende quien lo vea es a editar el test.
  */
 class ReplicaUnicaTest {
-
-    private static final Path DESPLIEGUE = Path.of("kubernetes/deployment.yaml");
 
     private static final String PRIMERO = """
             Antes de subir esto hace falta declarar un OAuth2AuthorizationService \
@@ -43,38 +42,19 @@ class ReplicaUnicaTest {
             este test se cambia con él, no antes.""";
 
     @Test
-    void el_deployment_declara_una_sola_replica() throws IOException {
-        assertThat(documento("Deployment").get("replicas"))
-                .as("Deployment.spec.replicas. %s", PRIMERO)
+    void cloud_run_arranca_con_una_instancia() throws IOException {
+        assertThat(TerraformDelAuth.escalado("min_instance_count"))
+                .as("Cloud Run min_instance_count. %s", PRIMERO)
                 .isEqualTo(1);
     }
 
     @Test
-    void el_hpa_no_puede_escalar_a_mas_de_una() throws IOException {
-        var spec = documento("HorizontalPodAutoscaler");
-
-        // Las dos, y no sólo maxReplicas: un minReplicas mayor que 1 escala
-        // igual, sólo que sin esperar a la métrica.
-        assertThat(spec.get("minReplicas"))
-                .as("HPA.spec.minReplicas. %s", PRIMERO)
+    void cloud_run_no_puede_escalar_a_mas_de_una() throws IOException {
+        // Lo que en GKE era el HPA 1..1: un maximo mayor que 1 reparte los canjes entre
+        // instancias sin tocar nada mas.
+        assertThat(TerraformDelAuth.escalado("max_instance_count"))
+                .as("Cloud Run max_instance_count: con mas de una, el canje falla de forma "
+                        + "intermitente. %s", PRIMERO)
                 .isEqualTo(1);
-        assertThat(spec.get("maxReplicas"))
-                .as("HPA.spec.maxReplicas: un HPA que pueda subir anula el 'replicas: 1' del "
-                        + "Deployment sin tocarlo. %s", PRIMERO)
-                .isEqualTo(1);
-    }
-
-    /** El bloque 'spec' del único documento de ese 'kind' en el fichero desplegado. */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> documento(String kind) throws IOException {
-        try (var in = Files.newInputStream(DESPLIEGUE)) {
-            for (Object documento : new Yaml().loadAll(in)) {
-                var mapa = (Map<String, Object>) documento;
-                if (kind.equals(mapa.get("kind"))) {
-                    return (Map<String, Object>) mapa.get("spec");
-                }
-            }
-        }
-        throw new AssertionError("no hay ningún " + kind + " en " + DESPLIEGUE);
     }
 }
