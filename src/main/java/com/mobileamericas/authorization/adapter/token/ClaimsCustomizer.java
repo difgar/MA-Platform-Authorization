@@ -137,7 +137,7 @@ public class ClaimsCustomizer implements OAuth2TokenCustomizer<JwtEncodingContex
     }
 
     /**
-     * {@code {"name": "trafficflow", "url": "https://tf.mobile-americas.com"}}.
+     * {@code {"name": "trafficflow", "url": "https://traffic.mobile-americas.com"}}.
      *
      * Lleva la URL y no sólo el nombre porque quien consume este claim es el
      * panel que pinta el menú, y con una lista de nombres tendría que mantener

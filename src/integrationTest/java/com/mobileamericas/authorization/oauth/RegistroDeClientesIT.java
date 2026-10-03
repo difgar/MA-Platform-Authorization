@@ -51,9 +51,9 @@ public abstract class RegistroDeClientesIT extends BaseIT {
         assertThat(c.getClientAuthenticationMethods()).containsExactly(ClientAuthenticationMethod.NONE);
         assertThat(c.getAuthorizationGrantTypes()).containsExactly(AuthorizationGrantType.AUTHORIZATION_CODE);
         assertThat(c.getRedirectUris()).containsExactlyInAnyOrder(
-                "https://tf.mobile-americas.com/callback", "http://localhost:5174/callback");
+                "https://traffic.mobile-americas.com/callback", "http://localhost:5174/callback");
         assertThat(c.getPostLogoutRedirectUris()).containsExactlyInAnyOrder(
-                "https://tf.mobile-americas.com/", "http://localhost:5174/");
+                "https://traffic.mobile-americas.com/", "http://localhost:5174/");
         assertThat(c.getClientSettings().isRequireProofKey()).isTrue();
         assertThat(c.getTokenSettings().getAccessTokenTimeToLive()).isEqualTo(Duration.ofHours(2));
     }
