@@ -93,7 +93,8 @@ tasks.named('test') {
     // por ruta de fichero: sin declararlo como entrada, cambiar las instancias o el
     // emisor deja la tarea UP-TO-DATE y esos dos guardianes ni se ejecutan. Pasó al
     // reapuntarlos: con el terraform estropeado a propósito seguían en verde.
-    inputs.files('terraform/servicio.tf', 'terraform/variables.tf').withPropertyName('descriptorDeDespliegue')
+    // Y los .tfvars, que pueden pisar el emisor sin tocar variables.tf.
+    inputs.files(fileTree('terraform') { include '*.tf', '*.tfvars' }).withPropertyName('descriptorDeDespliegue')
 }
 
 tasks.named('bootRun') {

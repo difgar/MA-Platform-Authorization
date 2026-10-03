@@ -17,6 +17,14 @@ mkdir -p "$BK"
 RECLAIM=(); for h in ${RECLAIM_HOSTS:-}; do RECLAIM+=(--reclaim-host "$h"); done
 APPLY=0; ARGS=()
 for a in "$@"; do [[ "$a" == "--apply" ]] && APPLY=1 || ARGS+=("$a"); done
+# Los argumentos se comprueban ANTES de exportar: con solo --apply exportaba y luego
+# moria en "ARGS[0]: unbound variable" (revision final, 2026-10-03).
+if [[ ${#ARGS[@]} -eq 0 ]]; then
+  echo "uso: [RECLAIM_HOSTS=...] $0 <fragmento.yaml> [tests.yaml] [--apply] | $0 --remove-own [--apply]" >&2; exit 2
+fi
+if [[ "${ARGS[0]}" != "--remove-own" && ! -f "${ARGS[0]}" ]]; then
+  echo "NO: no existe el fragmento ${ARGS[0]}" >&2; exit 2
+fi
 
 gcloud compute url-maps export "$MAP" --project="$PROJECT" --global --destination="$BK/$MAP-$TS.yaml" --quiet
 if [[ "${ARGS[0]}" == "--remove-own" ]]; then

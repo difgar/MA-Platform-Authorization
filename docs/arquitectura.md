@@ -19,7 +19,7 @@ graph TB
 
     subgraph paneles["Paneles — SPAs en buckets, clientes OAuth públicos"]
         HOME["MA-Platform-UI<br/>cliente: admin<br/>admin.mobile-americas.com"]
-        TF["TrafficFlow UI<br/>cliente: trafficflow<br/>tf.mobile-americas.com"]
+        TF["TrafficFlow UI<br/>cliente: trafficflow<br/>traffic.mobile-americas.com"]
         FGF["FGF<br/>cliente: fgf<br/>fgf.mobile-americas.com"]
     end
 
@@ -148,16 +148,18 @@ fallo más caro de diagnosticar del servicio:
 
 ## 5. Las tres cosas que no se ven en el código
 
-### 5.1 `replicas: 1` no es una decisión de capacidad
+### 5.1 Una sola instancia no es una decisión de capacidad
 
 **Es obligatorio.** No existe un almacén de autorizaciones compartido, así que
-un código emitido por un pod **no se puede canjear en otro**: subir réplicas
+un código emitido por una instancia **no se puede canjear en otra**: subir el máximo
+de instancias de Cloud Run (`terraform/servicio.tf`)
 rompe el login de forma intermitente, con un `invalid_grant` que no señala a
 ninguna parte.
 
 Y el almacén en memoria **no purga nunca** las autorizaciones completas: crece
-entre despliegues en un pod con 490 Mi de límite. El síntoma sería un OOM
-semanas después, y la sonda de vida reiniciaría el pod borrando la evidencia.
+mientras la instancia vive. Con mínimo 0 (desde el 2026-10-03) Cloud Run la apaga al
+quedarse sin uso y eso lo vacía; con mínimo 1 el síntoma sería un OOM semanas después,
+y la sonda de vida reiniciaría la instancia borrando la evidencia.
 
 `ReplicaUnicaTest` lo vigila y su mensaje dice qué hay que hacer antes de
 subirlo. **No subas ese número sin leerlo.**

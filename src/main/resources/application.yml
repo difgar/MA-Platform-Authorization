@@ -48,14 +48,14 @@ spring:
     # todo el mundo) y no depende de sesión pegajosa EL DÍA QUE SE PUEDA
     # ESCALAR.
     #
-    # Hoy no se puede, y no por la sesión: el Deployment corre 'replicas: 1' y
-    # el HPA min = max = 1 porque el almacén de autorizaciones es de memoria
+    # Hoy no se puede, y no por la sesión: Cloud Run corre como mucho UNA instancia
+    # (max_instance_count = 1) porque el almacén de autorizaciones es de memoria
     # (no hay bean OAuth2AuthorizationService), así que un código de
-    # autorización emitido por un pod no se canjea en otro. El porqué completo
+    # autorización emitido por una instancia no se canjea en otra. El porqué completo
     # está en el comentario de 'scaling' de terraform/servicio.tf y en
     # el README, sección «Réplicas». Este comentario decía que ya se corren
     # varias réplicas: era cierto cuando se escribió y dejó de serlo al fijar
-    # replicas: 1, en otro fichero.
+    # una sola (hoy, max_instance_count = 1 en terraform/servicio.tf).
     #
     # No se declara 'store-type': esa propiedad ya no existe en Boot 4, que
     # modularizó la autoconfiguración de sesión (spring-boot-session-jdbc, ver

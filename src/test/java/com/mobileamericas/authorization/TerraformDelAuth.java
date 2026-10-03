@@ -45,6 +45,27 @@ final class TerraformDelAuth {
                 "scaling." + campo));
     }
 
+    /**
+     * Los *.tfvars de terraform/ que fijan una variable: terraform los carga solos
+     * (*.auto.tfvars, terraform.tfvars) y pisan el default de variables.tf sin tocarlo.
+     */
+    static java.util.List<String> tfvarsQueFijan(String variable) throws IOException {
+        var patron = Pattern.compile("(?m)^\\s*" + Pattern.quote(variable) + "\\s*=");
+        try (var ficheros = Files.list(Path.of("terraform"))) {
+            return ficheros.filter(f -> f.getFileName().toString().endsWith(".tfvars"))
+                    .filter(f -> {
+                        try {
+                            return patron.matcher(Files.readString(f)).find();
+                        } catch (IOException e) {
+                            throw new java.io.UncheckedIOException(e);
+                        }
+                    })
+                    .map(Path::toString)
+                    .sorted()
+                    .toList();
+        }
+    }
+
     private static String grupo(Path fichero, String regex, String que) throws IOException {
         Matcher m = Pattern.compile(regex, Pattern.DOTALL).matcher(Files.readString(fichero));
         if (!m.find()) {
