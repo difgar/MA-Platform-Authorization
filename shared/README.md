@@ -8,6 +8,7 @@ backend del LB) está en [`../terraform/`](../terraform/).
 | Recurso | Script | Qué hace | Cómo se deshace |
 |---|---|---|---|
 | Base `ma_auth` | `db/crear-base.sh` | Secretos `ma-auth-db-{user,password}`, rol `ma_auth` sin superusuario, base sin CONNECT para PUBLIC | Ver cabecera del script |
+| Valores de los secretos | `secretos/cargar.sh` | Cliente OAuth de Google (desde su `client_secret.json`, que vive FUERA del repo, en `~/Documents/sms-americas/secretos-locales/`) y la JWK de firma (RSA 2048, `GenerarJwk.java`). Idempotente: no toca un secreto que ya tiene versión | `gcloud secrets versions destroy` de la versión |
 
 ## Medido
 
