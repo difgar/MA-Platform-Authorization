@@ -98,7 +98,7 @@ tasks.named('test') {
 
 tasks.named('bootRun') {
     // Mismo motivo que en integrationTest, y el mismo anclaje que el pod recibe
-    // por JAVA_TOOL_OPTIONS y TZ (kubernetes/deployment.yaml): los TIMESTAMP(6)
+    // por JAVA_TOOL_OPTIONS y TZ (terraform/servicio.tf): los TIMESTAMP(6)
     // de V3__oauth.sql no llevan zona, así que se escriben y se leen en la de
     // la JVM. Sin esta línea, arrancar en local desde una máquina que no está
     // en UTC desplaza las caducidades respecto de lo que verá producción.
@@ -115,7 +115,7 @@ tasks.register('integrationTest', Test) {
     testLogging { events 'failed' }
     // TIMESTAMP(6) en vez de 'timestamptz' (V3__oauth.sql) sólo es exacto si la
     // JVM está en UTC. En el pod esa condición la instalan JAVA_TOOL_OPTIONS y
-    // TZ (kubernetes/deployment.yaml), y en local bootRun (arriba); aquí se fija
+    // TZ (terraform/servicio.tf), y en local bootRun (arriba); aquí se fija
     // para que esta suite -la que valida el porte entre motores- corra bajo la
     // misma condición que asume el esquema.
     systemProperty 'user.timezone', 'UTC'

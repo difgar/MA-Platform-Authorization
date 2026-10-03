@@ -71,7 +71,7 @@ class SecurityConfig {
      * padre) para las peticiones que llegan por ESE puerto también, así que
      * sin esta cadena aparte, /actuator/health/{liveness,readiness} exige lo
      * mismo que el resto de la API: hoy, una sesión establecida con Google.
-     * Eso deja las probes de kubernetes/deployment.yaml sin poder autenticarse
+     * Eso deja las probes de Cloud Run (terraform/servicio.tf) sin poder autenticarse
      * nunca -una probe no hace un login federado-: el pod jamás pasaría
      * readinessProbe/livenessProbe. @Order(0) para que FilterChainProxy la
      * evalúe antes que filterChain() de más abajo.

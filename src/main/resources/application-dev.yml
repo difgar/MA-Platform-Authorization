@@ -17,12 +17,12 @@ spring:
     # La base de datos debe estar VACÍA la primera vez: Flyway aborta ante un
     # esquema no vacío sin tabla de historia, para no correr contra tablas ajenas.
     #
-    # Sin parámetros de zona horaria, a diferencia de la URL de MySQL de
-    # kubernetes/deployment.yaml: el driver de PostgreSQL ya manda y lee los
+    # Sin parámetros de zona horaria, a diferencia de la URL de MySQL que usaba el
+    # despliegue en GKE (hasta 2026-10-03): el driver de PostgreSQL ya manda y lee los
     # 'timestamp' sin zona en la zona de la JVM sin reinterpretarlos, así que
     # con -Duser.timezone=UTC en la JVM basta. El de MySQL no. Esa JVM en local
     # la ancla bootRun (build.gradle); en el pod, JAVA_TOOL_OPTIONS y TZ
-    # (kubernetes/deployment.yaml).
+    # (terraform/servicio.tf).
     url: jdbc:postgresql://localhost:5432/ma_auth
     username: ma_auth
     password: ma_auth

@@ -255,7 +255,7 @@ diagnosticar de todo el servicio:
    hace por migración; la fase 3 trae el CRUD. El `name` de esa fila **es** el
    `client_id`.
 2. **Su origen en `authorization.cors.allowed-origins`**
-   (`CORS_ALLOWED_ORIGINS`, ver el ConfigMap de `kubernetes/deployment.yaml`).
+   (`CORS_ALLOWED_ORIGINS`, ver `var.cors_allowed_origins` en `terraform/variables.tf`).
 
 Por qué la segunda no se puede deducir de la primera: `redirect_uri` gobierna
 una **navegación**, y `POST /oauth2/token` es una **llamada cross-origin** desde
@@ -283,7 +283,7 @@ debajo.
 Session (`spring.session.jdbc.cleanup-cron`, por defecto cada minuto). Está
 desactivada **sólo** en `src/integrationTest/resources/application.yml`, y esa
 desactivación no puede escaparse de las pruebas por esa vía; lo que sí la
-escaparía es un `SPRING_SESSION_JDBC_CLEANUP_CRON` en un ConfigMap. No lo
+escaparía es un `SPRING_SESSION_JDBC_CLEANUP_CRON` en el entorno del despliegue. No lo
 pongas.
 
 Esa expiración no la cubre ninguna prueba (12 h no se simulan). Comprobarlo a
@@ -390,7 +390,7 @@ esconde del todo.
 - **Vigilar el heap.** `jvm.memory.used` no se sirve hoy: `exposure.include` es
   `health,info`. Para mirarlo hay que añadir `metrics` a esa lista (no lo hace
   público: la cadena de actuator sólo abre sin autenticar `health` e `info`), o
-  mirar la memoria del contenedor en GKE.
+  mirar la memoria del contenedor en Cloud Run.
 - **Reiniciar el pod de vez en cuando** si pasan semanas sin desplegar: es la
   única purga que existe. Con una sola réplica, ese reinicio corta los canjes en
   vuelo (unos segundos), no las sesiones SSO, que están en la base de datos.
@@ -479,90 +479,69 @@ adivinar una sería peor.
 
 ## Despliegue
 
-`Dockerfile`, `kubernetes/deployment.yaml` y `cloudbuild.yaml` en la raíz del
-repo. Puntos que importa no olvidar:
+**Cloud Run desde el 2026-10-03** (antes, GKE; el diseño del cambio está en
+`docs/superpowers/specs/2026-10-03-auth-en-cloud-run-design.md`). Tres sitios:
 
-- El `Service` que enruta a este pod vive en `MA-Platform-config`, no en este
-  repositorio, y ya apunta a `8081`/`18081`. Este repo sólo tiene que seguir
-  escuchando ahí (`server.port: ${SERVER_PORT:8081}` en `application.yml`).
-- **El emisor se fija a mano** (`AUTH_ISSUER`, ConfigMap). Sin él, Spring
-  Authorization Server lo deriva de la petición entrante, y detrás del ingress
-  eso es `http://<ip-del-pod>:8081/authorization-api`: los tokens saldrían con un
-  `iss` que ningún consumidor que lo valide acepta, y el documento de
-  descubrimiento anunciaría endpoints inalcanzables. Incluye el context path.
-- **El `redirect_uri` de Google se declara literal**, no se deriva
-  (`GOOGLE_REDIRECT_URI`, ConfigMap). Tiene que ser **carácter a carácter** la
-  misma URL registrada en la consola de Google Cloud. Si se dejara al valor por
-  defecto de Boot (`{baseUrl}/login/oauth2/code/google`), lo construiría Spring
-  con el host que ve la aplicación y, detrás del ingress, Google lo rechazaría
-  con `redirect_uri_mismatch`: el login caería **entero**, con un error que
-  apunta a Google y no a este servicio.
-- **El ingress tiene que reenviar `X-Forwarded-Proto` y el `Host` original, y
-  además *sanearlos*.** La aplicación los respeta
-  (`server.forward-headers-strategy: framework`), y de ellos salen las URL
-  absolutas que construye. Reenviarlas no basta: el ingress tiene que
-  **descartar las que traiga el cliente** y poner las suyas. Si deja pasar un
-  `X-Forwarded-Host` de fuera, cualquiera puede decidir desde qué host construye
-  sus URL este servicio. Con `AUTH_ISSUER` y `GOOGLE_REDIRECT_URI` fijados, los
-  dos valores críticos ya no dependen de esas cabeceras; lo que queda expuesto
-  es el resto de URL derivadas.
-- **UTC en los dos extremos.** `TZ=UTC` y `-Duser.timezone=UTC` en
-  `JAVA_TOOL_OPTIONS`, **y** `?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`
-  en la URL de MySQL. Los `TIMESTAMP(6)` del esquema no llevan zona (ver la
-  cabecera de `V3__oauth.sql`): sin las dos mitades, lo que se escribe y lo que
-  se lee se desplazan y las caducidades dejan de ser las calculadas.
-- **Nada debe sobrescribir `SPRING_FLYWAY_LOCATIONS`** con un solo valor. Son
-  dos ubicaciones (`classpath:db/migration` y
-  `classpath:db/migration-vendor/{vendor}`), y con una sola no se aplicaría `V4`:
-  `SPRING_SESSION_ATTRIBUTES` no existiría y el servicio arrancaría bien **hasta
-  el primer login**.
-- La clave de firma se monta desde un `Secret` de Kubernetes
-  (`ma-auth-jwt-keys`) como volumen, sembrado desde Secret Manager en Cloud
-  Build — el mismo patrón que `MA-MtSender`, no el driver CSI de Secret Manager.
-- El cliente de Google viene de otro `Secret` (`ma-auth-google-client`, claves
-  `client-id` y `client-secret`). **Uno solo para todo el servicio**, no uno por
-  aplicación: la aplicación se deduce del `client_id` OAuth de la petición, no
-  del `aud` del token de Google. `auth_app.google_client_id` **ya no existe**;
-  la borró `V3__oauth.sql`.
-- El esquema apuntado por `DB_MA_PLATFORM_URL` (hoy `ma_auth`) debe ser **nuevo y
-  estar vacío**. Flyway detecta un esquema no vacío sin `flyway_schema_history` y
-  aborta el arranque en vez de aplicarle `V1__esquema.sql` encima: el primer
-  despliegue apuntó por error a `ma_platform_auth` (el esquema del servicio
-  antiguo, del que además sale el volcado de `V2__datos_iniciales.sql`) y el pod
-  nunca llegó a estar listo. **No se corrige con
-  `spring.flyway.baseline-on-migrate: true`**: eso saltaría `V1` en silencio y
-  dejaría la app corriendo contra las tablas del servicio viejo — falla abierto
-  donde hoy falla cerrado. En MySQL, crearlo con `utf8mb4` no basta por sí solo:
-  sigue teniendo que ser un esquema nuevo.
-- `cloudbuild.yaml` **no ejecuta tests** (Testcontainers necesitaría Docker
-  dentro de Docker). No es una puerta de calidad: compila y despliega lo que le
-  den. La suite completa se ejecuta en local antes de etiquetar.
+| Dónde | Qué |
+|---|---|
+| `terraform/` | Lo propio del auth en `sms-ma-platform`, con su state (`gs://ma-platform-auth-tfstate`): el Cloud Run `ma-authorization`, su cuenta de servicio, los contenedores de sus secretos, el registro de imágenes, el build y el NEG + backend del LB |
+| `shared/` | Lo compartido, a mano y sólo añadiendo: la base `ma_auth`, los valores de los secretos, los usuarios iniciales y la regla del url-map. **Ningún terraform toca la base ni el LB**: los comparten tres proyectos |
+| `scripts/construir-imagen.sh` | Construye la imagen en Cloud Build (`cloudbuild.yaml` solo construye) y la fija **por digest** en `terraform/imagenes.auto.tfvars` |
 
-### Pasos manuales, fuera de este repositorio
+Desplegar una versión: suite completa en local → commit → `scripts/construir-imagen.sh`
+→ `terraform -chdir=terraform plan -out=tfplan` → `apply tfplan`. Con
+`export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=it.mobile.americas@gmail.com)"`,
+porque las ADC de la máquina impersonan otra cuenta. No hay trigger: el de GKE
+(`ma-authorization-trigger`) se borró.
 
-Ningún commit los resuelve:
+Puntos que importa no olvidar:
 
-1. **Un único client ID de OAuth Web en Google Cloud**, con
-   `https://auth.mobile-americas.com/authorization-api/login/oauth2/code/google`
-   entre sus URI de redirección autorizadas (la ruta **incluye el context path**).
-   Esa misma cadena, carácter a carácter, es `GOOGLE_REDIRECT_URI` en el
-   ConfigMap: son dos copias que **tienen** que coincidir, una aquí y otra en
-   Google, y nada las compara automáticamente. Su id y su secreto, en el
-   `Secret` `ma-auth-google-client`.
-2. **Generar el par de claves de firma** y crear el `Secret` `ma-auth-jwt-keys`
-   (`kubectl create secret generic ma-auth-jwt-keys --from-file=active.jwk=./active.jwk`),
-   sembrado desde Secret Manager.
-3. **Confirmar los `redirect_uris` y `post_logout_redirect_uris` reales** de cada
-   aplicación en `auth_app`: la migración deja los previstos, que hay que
-   verificar contra el despliegue real de cada panel.
-4. **Poner los emails reales** en `auth_user`: `V2__datos_iniciales.sql` siembra
-   `usuario1@pendiente.local` y `usuario2@pendiente.local` a propósito, y con
-   esos nadie puede entrar — el login compara el email que da Google con esta
-   tabla.
-5. **Revisar el TTL por cliente**: 2 h por defecto; bajarlo donde haga falta.
-6. **Crear el esquema** apuntado por `DB_MA_PLATFORM_URL`, nuevo y vacío.
-7. Crear el repositorio de Artifact Registry y reapuntar los *triggers* de Cloud
-   Build.
+- **Una sola instancia** (Cloud Run mín 1 y máx 1). Ver «Réplicas»; lo vigila
+  `ReplicaUnicaTest` leyendo `terraform/servicio.tf`.
+- **El emisor se fija a mano** (`AUTH_ISSUER`, `var.issuer` en `terraform/variables.tf`).
+  Sin él, Spring Authorization Server lo deriva de la petición entrante, y detrás del
+  LB eso sería la URL `run.app`: los tokens saldrían con un `iss` que ningún
+  consumidor acepta. Incluye el context path. Lo vigila `EmisorDeProduccionTest`.
+- **El `redirect_uri` de Google se declara literal** (`GOOGLE_REDIRECT_URI`,
+  `"${var.issuer}/login/oauth2/code/google"`). Tiene que ser **carácter a carácter** la
+  misma URL registrada en la consola de Google Cloud; si no, `redirect_uri_mismatch` y el
+  login cae entero.
+- **Cabeceras reenviadas.** La aplicación respeta `X-Forwarded-*`
+  (`server.forward-headers-strategy: framework`). Con `AUTH_ISSUER` y
+  `GOOGLE_REDIRECT_URI` fijados, los dos valores críticos no dependen de ellas; el resto
+  de URL derivadas sí. Comprobado el 2026-10-03: el documento de descubrimiento sale
+  entero en `https://auth.mobile-americas.com/authorization-api/...`.
+- **UTC**: `TZ=UTC` y `-Duser.timezone=UTC` en `JAVA_TOOL_OPTIONS`. Los `TIMESTAMP(6)`
+  del esquema no llevan zona (ver la cabecera de `V3__oauth.sql`).
+- **Nada debe sobrescribir `SPRING_FLYWAY_LOCATIONS`** con un solo valor: con una sola
+  ubicación no se aplicaría `V4` y el servicio arrancaría bien **hasta el primer login**.
+- **La base** es `ma_auth` en la PostgreSQL compartida `ma-platform-db-pgsql`, por el
+  conector de Cloud SQL (la instancia lo exige). Se creó **nueva y vacía**
+  (`shared/db/crear-base.sh`) y Flyway la llenó al primer arranque. **No usar
+  `spring.flyway.baseline-on-migrate: true`**: saltaría `V1` en silencio. Pool de 3: la
+  instancia tiene 50 conexiones para tres proyectos; cada una se ve como
+  `ma-platform-auth/<revisión>` en `pg_stat_activity`.
+- **Secretos** en Secret Manager de `sms-ma-platform`; terraform crea los contenedores y
+  `shared/` carga los valores, que nunca pasan por el state:
+  `ma-auth-google-client-{id,secret}` (un solo cliente OAuth para todo el servicio),
+  `ma-auth-jwk` (montada como fichero en `/etc/ma-auth/keys/active.jwk`) y
+  `ma-auth-db-{user,password}`.
+- `cloudbuild.yaml` **no ejecuta tests** (Testcontainers necesitaría Docker dentro de
+  Docker). La suite completa se ejecuta en local antes de construir.
+
+### Pasos manuales, fuera de los commits
+
+Hechos el 2026-10-03; quedan escritos por si hay que repetirlos (otro entorno, desastre):
+
+1. **El cliente OAuth Web de Google** (`sms-ma-platform`), con
+   `https://auth.mobile-americas.com/authorization-api/login/oauth2/code/google` entre sus
+   URI de redirección. Pantalla de consentimiento **externa**; mientras esté en «Prueba»,
+   cada usuario nuevo de la plataforma tiene que estar también en «Usuarios de prueba»
+   (máx. 100), o hay que publicar la app.
+2. `shared/db/crear-base.sh` → `terraform apply` (primera parte) →
+   `shared/secretos/cargar.sh` → imagen → `terraform apply` → url-map
+   (`shared/README.md`) → `shared/db/usuarios.sql`.
+3. **Revisar el TTL por cliente**: 2 h por defecto.
 
 ## Generar una clave de firma
 
@@ -579,8 +558,8 @@ System.out.println(clave.toJSONString());
 
 El JSON resultante es el contenido completo del fichero (incluida la parte
 privada: `d`, `p`, `q`...). En cualquier entorno que no sea `dev`, ese fichero
-**no se commitea**: se crea como Secret de Kubernetes y se monta como volumen,
-nunca como variable de entorno ni en el código.
+**no se commitea**: va a Secret Manager (`ma-auth-jwk`, `shared/secretos/cargar.sh`) y
+Cloud Run lo monta como fichero, nunca como variable de entorno ni en el código.
 `authorization.jwt.key-locations` admite varias claves: durante una rotación se
 declaran dos, y la primera es la que firma.
 

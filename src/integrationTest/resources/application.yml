@@ -75,7 +75,7 @@ authorization:
     #     documento no mencione el host del servidor. En los dos motores.
     #   * el VALOR de producción, en EmisorDeProduccionTest (src/test, sin
     #     Spring ni Docker): que application.yml lo exija sin valor por defecto
-    #     y que el del ConfigMap lleve el context-path.
+    #     y que el de terraform/variables.tf lleve el context-path.
     #
     # Una versión anterior de este comentario decía que cubrirlo era imposible.
     # Era falso, y además del tipo de comentario que hace que nadie lo intente:
