@@ -1,0 +1,12 @@
+# Tests de 'gcloud compute url-maps validate'.
+tests:
+- {host: auth.mobile-americas.com, path: /authorization-api/.well-known/openid-configuration, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/ma-authorization-be}
+- {host: auth.mobile-americas.com, path: /authorization-api/oauth2/authorize, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/ma-authorization-be}
+- {host: auth.mobile-americas.com, path: /authorization-api/login/oauth2/code/google, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/ma-authorization-be}
+# Lo que no es del auth sigue donde estaba.
+- {host: auth.mobile-americas.com, path: /, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/map-bk-default-prod}
+- {host: auth.mobile-americas.com, path: /api/v1/authorization/google, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/map-bk-default-prod}
+# Vecinos: no cambian.
+- {host: admin.mobile-americas.com, path: /, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendBuckets/ma-platform-admin}
+- {host: entry.mobile-americas.com, path: /, service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/map-bk-entry-prod}
+- {host: traffic.mobile-americas.com, path: /api/v1/admin/networks, service: https://www.googleapis.com/compute/v1/projects/ma-trafficflow/global/backendServices/trafficflow-prod-admin-be}
