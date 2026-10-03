@@ -54,6 +54,10 @@ dependencies {
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.postgresql:postgresql'
+    // El conector, no la IP: en produccion ma_auth vive en ma-platform-db-pgsql, que exige
+    // connectorEnforcement=REQUIRED y la comparten tres proyectos. Misma version que MA-Portal
+    // y TrafficFlow.
+    runtimeOnly 'com.google.cloud.sql:postgres-socket-factory:1.30.0'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
@@ -84,16 +88,17 @@ tasks.named('test') {
     def artefacto = tasks.named('bootJar').flatMap { it.archiveFile }
     inputs.file(artefacto).withPropertyName('artefactoDeDespliegue')
     systemProperty 'ma.artefacto', artefacto.get().asFile.absolutePath
-    // Y el descriptor de Kubernetes, que EmisorDeProduccionTest y
-    // ReplicaUnicaTest leen por ruta de fichero: sin declararlo como entrada,
-    // cambiar 'replicas' o el ConfigMap deja la tarea UP-TO-DATE y esos dos
-    // guardianes ni se ejecutan.
-    inputs.file('kubernetes/deployment.yaml').withPropertyName('descriptorDeDespliegue')
+    // Y el terraform del despliegue (Cloud Run desde 2026-10-03; antes
+    // kubernetes/deployment.yaml), que EmisorDeProduccionTest y ReplicaUnicaTest leen
+    // por ruta de fichero: sin declararlo como entrada, cambiar las instancias o el
+    // emisor deja la tarea UP-TO-DATE y esos dos guardianes ni se ejecutan. Pasó al
+    // reapuntarlos: con el terraform estropeado a propósito seguían en verde.
+    inputs.files('terraform/servicio.tf', 'terraform/variables.tf').withPropertyName('descriptorDeDespliegue')
 }
 
 tasks.named('bootRun') {
     // Mismo motivo que en integrationTest, y el mismo anclaje que el pod recibe
-    // por JAVA_TOOL_OPTIONS y TZ (kubernetes/deployment.yaml): los TIMESTAMP(6)
+    // por JAVA_TOOL_OPTIONS y TZ (terraform/servicio.tf): los TIMESTAMP(6)
     // de V3__oauth.sql no llevan zona, así que se escriben y se leen en la de
     // la JVM. Sin esta línea, arrancar en local desde una máquina que no está
     // en UTC desplaza las caducidades respecto de lo que verá producción.
@@ -110,7 +115,7 @@ tasks.register('integrationTest', Test) {
     testLogging { events 'failed' }
     // TIMESTAMP(6) en vez de 'timestamptz' (V3__oauth.sql) sólo es exacto si la
     // JVM está en UTC. En el pod esa condición la instalan JAVA_TOOL_OPTIONS y
-    // TZ (kubernetes/deployment.yaml), y en local bootRun (arriba); aquí se fija
+    // TZ (terraform/servicio.tf), y en local bootRun (arriba); aquí se fija
     // para que esta suite -la que valida el porte entre motores- corra bajo la
     // misma condición que asume el esquema.
     systemProperty 'user.timezone', 'UTC'

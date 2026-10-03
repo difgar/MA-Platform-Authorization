@@ -98,7 +98,7 @@ class ActuatorSecurityIT {
 
     @Test
     void readiness_sigue_sin_autenticar() throws Exception {
-        // La prueba que de verdad importa para kubernetes/deployment.yaml:
+        // La prueba que de verdad importa para las sondas de Cloud Run (terraform/servicio.tf):
         // si esto exige autenticación, ningún pod pasa nunca su readinessProbe
         // (ver el hallazgo original del Task 10, antes de esta corrección).
         var respuesta = get("/actuator/health/readiness");

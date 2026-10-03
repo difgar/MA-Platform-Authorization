@@ -338,3 +338,8 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/java,gradle,macos,windows,linux,intellij,eclipse,visualstudiocode
+# Terraform: el state vive en gs://ma-platform-auth-tfstate, nunca aqui.
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan

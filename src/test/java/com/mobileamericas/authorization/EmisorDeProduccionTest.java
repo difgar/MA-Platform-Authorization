@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *    era la URL de producción, así que un entorno que olvidara la variable
  *    arrancaba emitiendo el 'iss' de producción sin que nada fallara. Fallar
  *    cerrado aquí es lo que convierte ese olvido en un pod que no arranca.
- * 2. Que alguien quite el context path del valor del ConfigMap. Los endpoints
+ * 2. Que alguien quite el context path del emisor de producción (terraform/variables.tf;
+ *    antes, el ConfigMap de kubernetes/deployment.yaml). Los endpoints
  *    cuelgan de él, así que un emisor sin /authorization-api anuncia URL que
  *    no existen y rompe a todo consumidor que use issuer-uri.
  *
@@ -37,7 +38,6 @@ class EmisorDeProduccionTest {
 
     private static final Path PRINCIPAL = Path.of("src/main/resources/application.yml");
     private static final Path DEV = Path.of("src/main/resources/application-dev.yml");
-    private static final Path DESPLIEGUE = Path.of("kubernetes/deployment.yaml");
 
     private static final String PROPIEDAD = "spring.security.oauth2.authorizationserver.issuer";
     private static final String CONTEXT_PATH = "/authorization-api";
@@ -55,7 +55,7 @@ class EmisorDeProduccionTest {
 
     @Test
     void el_emisor_de_produccion_lleva_el_context_path() throws IOException {
-        var emisor = valorDeConfigMap("AUTH_ISSUER");
+        var emisor = TerraformDelAuth.porDefecto("issuer");
 
         assertThat(emisor)
                 .as("el emisor es la base de todas las URL del descubrimiento, y los "
@@ -71,8 +71,9 @@ class EmisorDeProduccionTest {
      */
     @Test
     void el_redirect_uri_de_google_cuelga_del_mismo_emisor() throws IOException {
-        assertThat(valorDeConfigMap("GOOGLE_REDIRECT_URI"))
-                .isEqualTo(valorDeConfigMap("AUTH_ISSUER") + "/login/oauth2/code/google");
+        assertThat(TerraformDelAuth.env("AUTH_ISSUER")).isEqualTo("var.issuer");
+        assertThat(TerraformDelAuth.env("GOOGLE_REDIRECT_URI"))
+                .isEqualTo("${var.issuer}/login/oauth2/code/google");
     }
 
     @Test
@@ -97,20 +98,5 @@ class EmisorDeProduccionTest {
             assertThat(bloque).as("%s no declara %s", yml, PROPIEDAD).isNotNull();
             return (String) bloque.get("issuer");
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static String valorDeConfigMap(String clave) throws IOException {
-        try (var in = Files.newInputStream(DESPLIEGUE)) {
-            for (Object documento : new Yaml().loadAll(in)) {
-                var mapa = (Map<String, Object>) documento;
-                if ("ConfigMap".equals(mapa.get("kind"))) {
-                    var datos = (Map<String, Object>) mapa.get("data");
-                    assertThat(datos).as("el ConfigMap no define %s", clave).containsKey(clave);
-                    return (String) datos.get(clave);
-                }
-            }
-        }
-        throw new AssertionError("no hay ningún ConfigMap en " + DESPLIEGUE);
     }
 }

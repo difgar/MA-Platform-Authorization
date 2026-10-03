@@ -161,10 +161,21 @@ public abstract class MigracionIT extends BaseIT {
         var trafficflow = configuracionCliente("trafficflow");
 
         assertThat(trafficflow.redirectUris()).isEqualTo(
-                "https://tf.mobile-americas.com/callback,http://localhost:5174/callback");
+                "https://traffic.mobile-americas.com/callback,http://localhost:5174/callback");
         assertThat(trafficflow.postLogoutRedirectUris()).isEqualTo(
-                "https://tf.mobile-americas.com/,http://localhost:5174/");
+                "https://traffic.mobile-americas.com/,http://localhost:5174/");
         assertThat(trafficflow.accessTtlSeconds()).isEqualTo(7200L);
+    }
+
+    @Test
+    void el_enlace_de_trafficflow_en_el_menu_lleva_al_panel_y_no_a_los_clics() {
+        // tf.mobile-americas.com son ahora los CLICS (MS-1); el panel vive en traffic. Esta
+        // url es la que pinta el menu del admin (claim `apps`): con tf. llevaria al redirect
+        // de clics, no al panel.
+        var url = jdbc.sql("SELECT url FROM auth_app WHERE name = 'trafficflow'")
+                .query(String.class).single();
+
+        assertThat(url).isEqualTo("https://traffic.mobile-americas.com");
     }
 
     @Test

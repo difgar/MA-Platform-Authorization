@@ -1,5 +1,5 @@
 server:
-  # El Service de MA-Platform-config apunta a 8081 y el ConfigMap define
+  # Cloud Run publica el puerto 8081 (terraform/servicio.tf, que define
   # SERVER_PORT: "8081". El fichero anterior fijaba 18080 literal, así que
   # nada podía llegar al pod. Esta línea es el arreglo.
   port: ${SERVER_PORT:8081}
@@ -30,9 +30,15 @@ spring:
     username: ${DB_MA_PLATFORM_USER}
     password: ${DB_MA_PLATFORM_PASSWORD}
     hikari:
-      minimum-idle: 5
-      maximum-pool-size: 20
+      # 3 y no 20: en produccion la base es COMPARTIDA (ma-platform-db-pgsql, 50 conexiones
+      # para tres proyectos) y el auth es una sola instancia con poco trafico.
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      maximum-pool-size: ${DB_POOL_MAX:3}
       pool-name: AuthHikariCP
+      data-source-properties:
+        # Quien consume cada conexion, en pg_stat_activity: ma-platform-auth/<revision de
+        # Cloud Run>, o /local fuera de ella. Se recorta a 63: ver NombreDeConexion.
+        ApplicationName: ${DB_APPLICATION_NAME:ma-platform-auth/${K_REVISION:local}}
   jpa:
     hibernate.ddl-auto: validate     # Flyway manda; Hibernate sólo comprueba
     open-in-view: false
@@ -46,7 +52,7 @@ spring:
     # el HPA min = max = 1 porque el almacén de autorizaciones es de memoria
     # (no hay bean OAuth2AuthorizationService), así que un código de
     # autorización emitido por un pod no se canjea en otro. El porqué completo
-    # está en el comentario de 'replicas' de kubernetes/deployment.yaml y en
+    # está en el comentario de 'scaling' de terraform/servicio.tf y en
     # el README, sección «Réplicas». Este comentario decía que ya se corren
     # varias réplicas: era cierto cuando se escribió y dejó de serlo al fijar
     # replicas: 1, en otro fichero.
@@ -71,7 +77,7 @@ spring:
       # se cruzaba con el cierre de Hikari al cerrar cada contexto de prueba.
       # Ese fichero REEMPLAZA a éste durante integrationTest, no se fusiona,
       # así que el '-' no puede escaparse de las pruebas por esa vía. Lo que sí
-      # lo haría es un SPRING_SESSION_JDBC_CLEANUP_CRON en un ConfigMap; no lo
+      # lo haría es un SPRING_SESSION_JDBC_CLEANUP_CRON en el entorno del despliegue; no lo
       # pongas. Cómo comprobar a mano que la limpieza va: README, sección
       # «Sesión SSO».
   security.oauth2.client.registration.google:
@@ -119,7 +125,7 @@ spring:
     #
     # La variable se llama AUTH_ISSUER y no JWT_ISSUER a propósito: JWT_ISSUER
     # era de la propiedad huérfana authorization.jwt.issuer (retirada en esta
-    # tarea), cuyo valor NO llevaba el context-path. Si un ConfigMap heredado
+    # tarea), cuyo valor NO llevaba el context-path. Si un despliegue heredado
     # todavía la define, reutilizar el nombre daría un emisor mal formado sin
     # que nada avise.
     #
@@ -129,7 +135,7 @@ spring:
     # descubrimiento que apunta al dominio público. Eso es fallar ABIERTO justo
     # en el valor que esta tarea existe para fijar, y en un fichero donde todo
     # lo demás falla cerrado. Ahora el pod no arranca sin ella. El perfil 'dev'
-    # la sobrescribe con la local, y el ConfigMap la trae para producción.
+    # la sobrescribe con la local, y terraform/servicio.tf la trae para producción.
     issuer: ${AUTH_ISSUER}
   flyway:
     enabled: true
@@ -142,7 +148,7 @@ spring:
     # otro y el placeholder {vendor} selecciona el correcto sin colisión.
     #
     # NADA debe sobrescribir esto con una sola ubicación (un
-    # SPRING_FLYWAY_LOCATIONS en un ConfigMap o Secret, por ejemplo): V4 no se
+    # SPRING_FLYWAY_LOCATIONS en el entorno del despliegue, por ejemplo): V4 no se
     # aplicaría, SPRING_SESSION_ATTRIBUTES no existiría y el servicio
     # arrancaría bien hasta el primer login.
     locations: classpath:db/migration,classpath:db/migration-vendor/{vendor}
@@ -183,8 +189,8 @@ authorization:
     # navegador corte la petición antes de enviarla y el servidor no registre
     # NADA. Ver README, sección «Dar de alta una aplicación nueva».
     #
-    # El comodín cubre los paneles bajo el dominio propio; el ConfigMap de
-    # kubernetes/deployment.yaml lo sustituye por la lista exacta de orígenes
+    # El comodín cubre los paneles bajo el dominio propio; terraform/servicio.tf
+    # (var.cors_allowed_origins) lo sustituye por la lista exacta de orígenes
     # de producción, que es lo que de verdad se despliega.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://*.mobile-americas.com}
 

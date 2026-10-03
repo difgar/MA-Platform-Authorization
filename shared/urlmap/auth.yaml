@@ -1,0 +1,18 @@
+# La regla del servidor de autorizacion en el url-map COMPARTIDO ma-platform-lb. La aplica
+# apply.sh con RECLAIM_HOSTS=auth.mobile-americas.com: el host deja la regla de la
+# plataforma (path-matcher-7, que solo lo mandaba a nginx) y pasa a esta.
+#
+# Solo /authorization-api/* va al auth (Cloud Run, terraform/servicio.tf). Todo lo demas de
+# auth. sigue yendo a donde iba (map-bk-default-prod), igual que hoy.
+hostRules:
+- hosts:
+  - auth.mobile-americas.com
+  pathMatcher: ma-platform-auth
+pathMatchers:
+- name: ma-platform-auth
+  defaultService: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/map-bk-default-prod
+  routeRules:
+  - priority: 10
+    matchRules:
+    - prefixMatch: /authorization-api/
+    service: https://www.googleapis.com/compute/v1/projects/sms-ma-platform/global/backendServices/ma-authorization-be
