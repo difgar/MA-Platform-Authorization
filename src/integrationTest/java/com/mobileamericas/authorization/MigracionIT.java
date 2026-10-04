@@ -106,12 +106,13 @@ public abstract class MigracionIT extends BaseIT {
     @Test
     void reproduce_el_volcado_de_produccion() {
         // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
-        // 6 con V6__rol_admin_trafficflow.sql. auth_user y auth_user_role NO
+        // 6 con V6__rol_admin_trafficflow.sql, y a 8 con V9__roles_de_trafficflow.sql
+        // (trafficflow_user y trafficflow_viewer). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
         assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(6L);
+        assertThat(contar("auth_role")).isEqualTo(8L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -132,7 +133,7 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
-    void el_rol_admin_de_trafficflow_lleva_comodin_y_su_advertencia_escrita() {
+    void el_rol_trafficflow_admin_lleva_comodin_y_su_advertencia_escrita() {
         // El comodín concede los 25 permisos, reenvios:crear incluido. Es una
         // decisión tomada con la consecuencia delante, no el resultado de no
         // decidir, y por eso la advertencia vive en la columna -editable sin
@@ -140,7 +141,7 @@ public abstract class MigracionIT extends BaseIT {
         var rol = jdbc.sql("""
                         SELECT r.description FROM auth_role r
                           JOIN auth_app a ON a.id = r.app_id
-                         WHERE a.name = 'trafficflow' AND r.name = 'admin'
+                         WHERE a.name = 'trafficflow' AND r.name = 'trafficflow_admin'
                         """).query(String.class).single();
 
         assertThat(rol).contains("reenviar").contains("dos veces se paga dos veces");
@@ -150,10 +151,54 @@ public abstract class MigracionIT extends BaseIT {
                           JOIN auth_role_permission rp ON rp.permission_id = p.id
                           JOIN auth_role r ON r.id = rp.role_id
                           JOIN auth_app a ON a.id = r.app_id
-                         WHERE a.name = 'trafficflow' AND r.name = 'admin'
+                         WHERE a.name = 'trafficflow' AND r.name = 'trafficflow_admin'
                         """).query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
 
         assertThat(permisos).containsExactly("*:*");
+    }
+
+    @Test
+    void trafficflow_tiene_exactamente_tres_roles_y_el_admin_conserva_su_id() {
+        // V9 (difgar, 2026-10-04): admin pasa a trafficflow_admin RENOMBRANDO la fila, no
+        // creando otra: los usuarios que ya lo tenian (auth_user_role apunta al id) siguen
+        // siendo administradores sin tocarlos.
+        var roles = jdbc.sql("""
+                        SELECT r.id, r.name FROM auth_role r JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = 'trafficflow'
+                        """).query((rs, n) -> rs.getString("name") + "=" + rs.getString("id")).list();
+
+        assertThat(roles).hasSize(3).contains("trafficflow_admin=c0000000-0000-4000-8000-000000000006");
+        assertThat(roles).anyMatch(r -> r.startsWith("trafficflow_user="))
+                .anyMatch(r -> r.startsWith("trafficflow_viewer="));
+    }
+
+    @Test
+    void trafficflow_user_puede_todo_menos_lo_que_envia_postbacks() {
+        // Sin comodin, porque el comodin no admite exclusiones (ver V6): la lista es el
+        // catalogo MENOS reenvios:crear y barridos:crear, que son las dos acciones que hacen
+        // salir un postback hacia la red (y el pago es nuestro). postbacks:leer si va.
+        var permisos = permisosDelRol("trafficflow_user");
+
+        assertThat(permisos).doesNotContain("reenvios:crear", "barridos:crear", "*:*")
+                .contains("postbacks:leer", "redes:crear", "campanas:editar", "endpoints:editar",
+                        "reglas:borrar", "enlaces:borrar")
+                .hasSize(24);
+    }
+
+    @Test
+    void trafficflow_viewer_solo_lee() {
+        assertThat(permisosDelRol("trafficflow_viewer")).containsExactly("*:leer");
+    }
+
+    private java.util.List<String> permisosDelRol(String rol) {
+        return jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p
+                          JOIN auth_role_permission rp ON rp.permission_id = p.id
+                          JOIN auth_role r ON r.id = rp.role_id
+                          JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = 'trafficflow' AND r.name = :rol
+                        """).param("rol", rol)
+                .query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
     }
 
     @Test
