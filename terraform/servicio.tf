@@ -32,10 +32,11 @@ resource "google_cloud_run_v2_service" "auth" {
       # (application.yml). Con dos, un codigo emitido por una se canjearia en la otra y
       # fallaria. Es lo que en GKE era replicas: 1 + HPA 1..1 (ReplicaUnicaTest): el MAXIMO
       # es la invariante.
-      # Minimo 0 (difgar, 2026-10-03): poco trafico, y asi se evalua. El primer login tras
-      # un rato parado espera el arranque (~15-20 s); un login a medias se pierde si la
-      # instancia se apaga en ese segundo. Subir a 1 si la espera molesta (~10-15 USD/mes).
-      min_instance_count = 0
+      # Minimo 1 (difgar, 2026-10-03, ~10-15 USD/mes): con 0, el arranque (>15 s) hacia que
+      # MS-2 de TrafficFlow agotara su espera de 15 s al bajar el JWKS en frio, y el panel
+      # daba 500 en el primer uso tras un rato parado. En evaluacion: si aparece otra salida
+      # (p. ej. que MS-2 aguante mas o guarde el JWKS), se puede volver a 0.
+      min_instance_count = 1
       max_instance_count = 1
     }
 
