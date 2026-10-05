@@ -63,6 +63,53 @@ public abstract class AccesoAlClienteIT extends BaseOauthIT {
                 .contains("error=access_denied");
     }
 
+    /**
+     * El atasco de producción (finanzas@ en admin, 2026-10-05): rechazado por
+     * sin_rol, la sesión de auth seguía autenticada con esa cuenta, así que
+     * cada reintento repetía el rechazo sin pasar por Google, y el logout OIDC
+     * daba 400 porque nunca se emitió un id_token que mandar como
+     * id_token_hint. La única salida era borrar cookies.
+     *
+     * Se reutiliza la cookie VIEJA a propósito, no la que devuelva el rechazo:
+     * un navegador que no aplicara el borrado de la cookie -o alguien que la
+     * copiara antes- debe encontrarse igualmente con una sesión que ya no
+     * existe en el servidor, no sólo con una cookie caducada.
+     */
+    @Test
+    void tras_el_rechazo_sin_rol_la_sesion_de_auth_deja_de_valer_y_se_vuelve_a_google() {
+        retirarRolDeUsuario2EnFgf();
+        var cookie = iniciarSesionCon("usuario2@pendiente.local");
+
+        var rechazo = pedirAutorizacion(cookie, "fgf");
+        assertThat(rechazo.getHeaders().getLocation().toString())
+                .startsWith("https://fgf.mobile-americas.com/callback")
+                .contains("error=access_denied")
+                .contains("error_reason=sin_rol");
+
+        var reintento = pedirAutorizacion(cookie, "fgf");
+
+        assertThat(reintento.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(reintento.getHeaders().getLocation().toString())
+                .endsWith("/oauth2/authorization/google");
+    }
+
+    /**
+     * La otra mitad: invalidar es SÓLO para el rechazo. Una sesión con roles
+     * sigue sirviendo para pedir otro código sin volver a Google; si no, el
+     * arreglo de arriba convertiría el SSO en un login por cada aplicación.
+     */
+    @Test
+    void con_roles_la_sesion_sigue_valiendo_para_el_siguiente_authorize() {
+        var cookie = iniciarSesionCon("usuario2@pendiente.local");
+
+        pedirAutorizacion(cookie, "admin");
+        var otra = pedirAutorizacion(cookie, "admin");
+
+        assertThat(otra.getHeaders().getLocation().toString())
+                .contains("code=")
+                .doesNotContain("error=");
+    }
+
     /** usuario2 sí tiene analyst@admin (de fábrica, sin tocar el seed): con roles, código. */
     @Test
     void con_roles_en_la_app_devuelve_un_codigo() {
