@@ -176,6 +176,30 @@ public abstract class LoginIT extends BaseOauthIT {
         assertThat(contar("SPRING_SESSION")).isEqualTo(sesionesAntes);
     }
 
+    /**
+     * Sin prompt=select_account, Google entra en silencio con la última
+     * cuenta usada en el navegador: quien fue rechazado por sin_rol con una
+     * cuenta (finanzas@ en el admin, 2026-10-05) volvía a entrar con la MISMA
+     * aunque la sesión de auth ya se hubiera cerrado, y no había forma de
+     * elegir otra. El valor se mira en la petición que de verdad sale hacia el
+     * proveedor, no en la configuración.
+     *
+     * nonce y code_challenge también: el resolver se sustituye por uno propio
+     * para añadir el parámetro, y lo que traía el de serie no debe perderse
+     * por el camino.
+     */
+    @Test
+    void la_peticion_a_google_pide_elegir_cuenta() {
+        var aGoogle = get(urlBase() + "/oauth2/authorization/google", null);
+
+        assertThat(aGoogle.statusCode()).isEqualTo(302);
+        assertThat(aGoogle.headers().firstValue("Location").orElseThrow())
+                .startsWith(GoogleSimulado.arrancar().issuerUri() + "/oauth2/authorize")
+                .contains("prompt=select_account")
+                .contains("nonce=")
+                .contains("code_challenge=");
+    }
+
     @Test
     void un_usuario_que_no_esta_en_auth_user_es_rechazado() {
         var sesionesSuyasAntes = sesionesDe("nadie@ejemplo.com");

@@ -17,6 +17,10 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -296,7 +300,8 @@ class SecurityConfig {
             // el nuestro: NoUniqueBeanDefinitionException al arrancar.
             @Qualifier("corsConfigurationSource") CorsConfigurationSource cors,
             UsuarioOidcService usuarios,
-            RegisteredClientRepository clientes)
+            RegisteredClientRepository clientes,
+            ClientRegistrationRepository proveedores)
             throws Exception {
         return http
                 .cors(c -> c.configurationSource(cors))
@@ -304,6 +309,9 @@ class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(o -> o
+                        // Siempre el selector de cuentas de Google. Ver
+                        // pedirElegirCuenta.
+                        .authorizationEndpoint(a -> a.authorizationRequestResolver(pedirElegirCuenta(proveedores)))
                         .userInfoEndpoint(u -> u
                                 .oidcUserService(usuarios)
                                 // Sin este mapper no se emite ningún ID token:
@@ -333,6 +341,30 @@ class SecurityConfig {
                 // LoginIT.una_peticion_anonima_no_escribe_sesion_en_la_base_de_datos.
                 .requestCache(c -> c.requestCache(cacheAcotadoA(peticion -> false)))
                 .build();
+    }
+
+    /**
+     * prompt=select_account en TODA petición a Google, a cambio de un clic más
+     * para quien sólo tiene una cuenta.
+     *
+     * Sin él, Google entra en silencio con la última cuenta usada en ese
+     * navegador. Lo encontró producción (finanzas@ en el admin, 2026-10-05):
+     * rechazada por sin_rol, la persona no tenía forma de entrar con otra
+     * cuenta. Cerrar la sesión de auth en el rechazo (RespuestaDeAuthorizeFallido)
+     * es la otra mitad: sin esto, el viaje de vuelta a Google acabaría en la
+     * misma cuenta sin preguntar.
+     *
+     * El resolver es el de serie (mismo base URI que el filtro, así que
+     * /oauth2/authorization/google sigue siendo la URL de entrada que usa el
+     * entry point de la cadena del authorization server); sólo se le añade el
+     * parámetro. Ver LoginIT.la_peticion_a_google_pide_elegir_cuenta.
+     */
+    private static OAuth2AuthorizationRequestResolver pedirElegirCuenta(ClientRegistrationRepository proveedores) {
+        var resolver = new DefaultOAuth2AuthorizationRequestResolver(proveedores,
+                OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI);
+        resolver.setAuthorizationRequestCustomizer(peticion -> peticion
+                .additionalParameters(p -> p.put("prompt", "select_account")));
+        return resolver;
     }
 
     /**

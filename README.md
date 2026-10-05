@@ -451,6 +451,15 @@ sitio de este documento**. Si añades uno, se añade aquí.
 > y no significan lo mismo.** El primero es «canceló»; el segundo, «no tiene
 > permiso aquí». Confundirlos manda a *pedir un permiso a quien ya lo tiene*.
 >
+> **`sin_rol` cierra además la sesión de auth** de esa cuenta: el siguiente
+> `/oauth2/authorize` vuelve a Google, que siempre muestra el selector de cuentas
+> (`prompt=select_account`). Sin eso, quien fue rechazado quedaba atrapado con la
+> misma cuenta —cada reintento repetía el rechazo sin pasar por Google, y el
+> logout OIDC daba 400 por no haber `id_token`—. Un consumidor no tiene que
+> cerrar nada: basta con ofrecer «entrar con otra cuenta» como un login normal.
+> Coste: si esa misma cuenta tenía sesión abierta en OTRA aplicación, su próximo
+> `/authorize` también pasará por Google.
+>
 > Y **la ausencia de `error_reason` no significa nada**, a propósito: un hueco lo
 > produce cualquiera —una caída de red, una respuesta a medias, un consumidor
 > que aún no conoce el contrato— y si un significado viajara ahí, todos esos
