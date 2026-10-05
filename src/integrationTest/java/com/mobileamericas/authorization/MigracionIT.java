@@ -113,7 +113,7 @@ public abstract class MigracionIT extends BaseIT {
     void reproduce_el_volcado_de_produccion() {
         // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
         // 6 con V6__rol_admin_trafficflow.sql, y a 8 con V9__roles_de_trafficflow.sql
-        // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_usuario_en_admin.sql
+        // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_admin_user_en_admin.sql
         // (usuario@admin, la puerta al menú de aplicaciones). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
@@ -140,21 +140,21 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
-    void el_rol_usuario_del_admin_solo_deja_ver_el_menu_de_aplicaciones() {
+    void el_rol_admin_user_del_admin_solo_deja_ver_el_menu_de_aplicaciones() {
         // V10 (2026-10-05): quien sólo usa TrafficFlow (finanzas@) entraba por el admin
         // -el menú desde el que se salta a cada aplicación- y era rechazado por sin_rol,
         // porque no tenía NINGÚN rol en admin. Este rol es la puerta mínima: apps:leer y
         // nada más. Ni usuarios ni roles, ni crear ni editar apps.
-        assertThat(permisosDelRolEn("admin", "usuario")).containsExactly("apps:leer");
+        assertThat(permisosDelRolEn("admin", "admin_user")).containsExactly("apps:leer");
     }
 
     @Test
-    void el_rol_usuario_del_admin_explica_para_que_es() {
+    void el_rol_admin_user_del_admin_explica_para_que_es() {
         // La descripción es lo que ve quien asigna roles desde el propio admin: sin ella,
-        // 'usuario' parece un rol genérico de la plataforma y no la puerta al menú.
+        // 'admin_user' parece un rol genérico del admin y no la puerta al menú.
         var descripcion = jdbc.sql("""
                         SELECT r.description FROM auth_role r JOIN auth_app a ON a.id = r.app_id
-                         WHERE a.name = 'admin' AND r.name = 'usuario'
+                         WHERE a.name = 'admin' AND r.name = 'admin_user'
                         """).query(String.class).single();
 
         assertThat(descripcion).contains("menu").contains("apps:leer");
@@ -177,13 +177,13 @@ public abstract class MigracionIT extends BaseIT {
         var permisosAntes = contar("auth_permission");
         var concesionesAntes = contar("auth_role_permission");
 
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V10__rol_usuario_en_admin.sql"))
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V10__rol_admin_user_en_admin.sql"))
                 .execute(fuente);
 
         assertThat(contar("auth_role")).isEqualTo(rolesAntes);
         assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
         assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
-        assertThat(permisosDelRolEn("admin", "usuario")).containsExactly("apps:leer");
+        assertThat(permisosDelRolEn("admin", "admin_user")).containsExactly("apps:leer");
         assertThat(permisosDelRolEn("admin", "admin")).containsExactly("*:*");
     }
 
