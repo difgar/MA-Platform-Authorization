@@ -1,1 +1,1 @@
-imagen = "us-east1-docker.pkg.dev/sms-ma-platform/ma-authorization/ma-authorization@sha256:263638b427cf59799136df2f2a6a9cc37310474185d0dfbdec727f368aae196b" # 2923c7a6322a
+imagen = "us-east1-docker.pkg.dev/sms-ma-platform/ma-authorization/ma-authorization@sha256:614c350f75bfa812030490fc385e258833298398ad669c0ef150962083bd4963" # 2379f5ac38e2
