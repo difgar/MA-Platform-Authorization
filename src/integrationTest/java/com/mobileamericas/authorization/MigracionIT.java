@@ -1,6 +1,12 @@
 package com.mobileamericas.authorization;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+
+import javax.sql.DataSource;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -107,12 +113,13 @@ public abstract class MigracionIT extends BaseIT {
     void reproduce_el_volcado_de_produccion() {
         // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
         // 6 con V6__rol_admin_trafficflow.sql, y a 8 con V9__roles_de_trafficflow.sql
-        // (trafficflow_user y trafficflow_viewer). auth_user y auth_user_role NO
+        // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_usuario_en_admin.sql
+        // (usuario@admin, la puerta al menú de aplicaciones). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
         assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(8L);
+        assertThat(contar("auth_role")).isEqualTo(9L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -130,6 +137,68 @@ public abstract class MigracionIT extends BaseIT {
                 .list();
 
         assertThat(permisos).containsExactlyInAnyOrder("*:leer", "*:editar");
+    }
+
+    @Test
+    void el_rol_usuario_del_admin_solo_deja_ver_el_menu_de_aplicaciones() {
+        // V10 (2026-10-05): quien sólo usa TrafficFlow (finanzas@) entraba por el admin
+        // -el menú desde el que se salta a cada aplicación- y era rechazado por sin_rol,
+        // porque no tenía NINGÚN rol en admin. Este rol es la puerta mínima: apps:leer y
+        // nada más. Ni usuarios ni roles, ni crear ni editar apps.
+        assertThat(permisosDelRolEn("admin", "usuario")).containsExactly("apps:leer");
+    }
+
+    @Test
+    void el_rol_usuario_del_admin_explica_para_que_es() {
+        // La descripción es lo que ve quien asigna roles desde el propio admin: sin ella,
+        // 'usuario' parece un rol genérico de la plataforma y no la puerta al menú.
+        var descripcion = jdbc.sql("""
+                        SELECT r.description FROM auth_role r JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = 'admin' AND r.name = 'usuario'
+                        """).query(String.class).single();
+
+        assertThat(descripcion).contains("menu").contains("apps:leer");
+    }
+
+    @Test
+    void el_admin_del_admin_sigue_con_el_comodin() {
+        // Producción lo tiene creado a mano; V2 lo trae en una base nueva. V10 lo asegura
+        // por nombre sin duplicarlo: exactamente uno, con '*:*'.
+        assertThat(permisosDelRolEn("admin", "admin")).containsExactly("*:*");
+    }
+
+    @Test
+    void v10_es_idempotente_y_reaplicarla_no_cambia_nada() {
+        // Producción se rehizo a mano con ids aleatorios y YA puede traer parte de lo que V10
+        // crea: cada sentencia tiene que no hacer nada si lo suyo ya está. Reaplicar el mismo
+        // fichero sobre una base que ya lo tiene es la forma de comprobarlo sin una copia de
+        // producción.
+        var rolesAntes = contar("auth_role");
+        var permisosAntes = contar("auth_permission");
+        var concesionesAntes = contar("auth_role_permission");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V10__rol_usuario_en_admin.sql"))
+                .execute(fuente);
+
+        assertThat(contar("auth_role")).isEqualTo(rolesAntes);
+        assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
+        assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
+        assertThat(permisosDelRolEn("admin", "usuario")).containsExactly("apps:leer");
+        assertThat(permisosDelRolEn("admin", "admin")).containsExactly("*:*");
+    }
+
+    @Autowired
+    private DataSource fuente;
+
+    private List<String> permisosDelRolEn(String app, String rol) {
+        return jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p
+                          JOIN auth_role_permission rp ON rp.permission_id = p.id
+                          JOIN auth_role r ON r.id = rp.role_id
+                          JOIN auth_app a ON a.id = r.app_id
+                         WHERE a.name = :app AND r.name = :rol
+                        """).param("app", app).param("rol", rol)
+                .query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
     }
 
     @Test
