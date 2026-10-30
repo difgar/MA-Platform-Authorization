@@ -90,12 +90,12 @@ public abstract class FlujoCompletoIT extends BaseOauthIT {
         // 'openid' y nada más. Los permisos viajan en 'permissions', no
         // inflando el scope.
         assertThat(claims.get("scope")).isEqualTo(List.of("openid"));
-        // admin@admin es el comodín '*:*'. Que aquí lleguen los 44 permisos
-        // concretos de la app (11 recursos x 4 verbos: 3 de V2 y 8 de V11) y NINGÚN comodín es lo
+        // admin@admin es el comodín '*:*'. Que aquí lleguen los 56 permisos
+        // concretos de la app (14 recursos x 4 verbos: 3 de V2, 8 de V11 y 3 de V12) y NINGÚN comodín es lo
         // que demuestra que AccessGrant expandió antes de firmar: un resource
         // server estándar compara cadenas, no sabe interpretar '*'.
         assertThat(claims.get("permissions")).asInstanceOf(LIST)
-                .hasSize(44)
+                .hasSize(56)
                 .doesNotContain("*:*", "*:borrar", "admin:usuarios:borrar");
         // El TTL, sobre un token EMITIDO. RegistroDeClientesIT afirma el
         // TokenSettings que sale de auth_app.access_ttl_seconds, que es la

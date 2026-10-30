@@ -1,5 +1,6 @@
 package com.mobileamericas.authorization;
 
+import com.mobileamericas.authorization.domain.Permission;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
@@ -9,6 +10,7 @@ import javax.sql.DataSource;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 
 /**
  * Pruebas de migración. Cada motor la extiende con su contenedor y su propio
@@ -114,13 +116,14 @@ public abstract class MigracionIT extends BaseIT {
         // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
         // 6 con V6__rol_admin_trafficflow.sql, y a 8 con V9__roles_de_trafficflow.sql
         // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_admin_user_en_admin.sql
-        // (usuario@admin, la puerta al menú de aplicaciones), y a 10 con
-        // V11__configuracion_en_admin.sql (configurador). auth_user y auth_user_role NO
+        // (usuario@admin, la puerta al menú de aplicaciones), a 10 con
+        // V11__configuracion_en_admin.sql (configurador) y a 11 con V12__soporte_en_admin.sql
+        // (soporte). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
         assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(10L);
+        assertThat(contar("auth_role")).isEqualTo(11L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -237,6 +240,57 @@ public abstract class MigracionIT extends BaseIT {
         assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
         assertThat(permisosDelRolEn("admin", "configurador"))
                 .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_CONFIGURACION);
+    }
+
+    private static final List<String> PERMISOS_DE_SOPORTE = List.of(
+            "soporte:leer", "cancelaciones:crear", "blacklist:editar");
+
+    @Test
+    void el_rol_soporte_consulta_cancela_y_toca_la_blacklist_y_nada_mas() {
+        // V12 (2026-10-30): el rol del modulo Soporte del admin (MA-Platform-Support-API).
+        assertThat(permisosDelRolEn("admin", "soporte"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_SOPORTE);
+    }
+
+    @Test
+    void el_catalogo_del_admin_declara_los_recursos_de_soporte() {
+        // Sin estas filas, el '*:*' del admin no se expande a ellos y el admin no veria el
+        // modulo. Ojo: en una base nueva, V2 crea 'support' (*:leer, *:editar), que por la misma
+        // expansion tendria soporte:leer y blacklist:editar. En produccion no existe.
+        var catalogo = jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p JOIN auth_app a ON a.id = p.app_id
+                         WHERE a.name = 'admin'
+                        """).query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
+
+        assertThat(catalogo).containsAll(PERMISOS_DE_SOPORTE);
+    }
+
+    @Test
+    void todas_las_filas_del_catalogo_son_permisos_del_dominio() {
+        // DomainMapper construye un Permission por fila al cargar un rol: un verbo fuera de Verb
+        // ('cancelar', como decia la spec del modulo Soporte) haria fallar la carga del rol y el
+        // login de quien lo tenga. Verb es cerrado a proposito (ver V5 y V12).
+        var filas = jdbc.sql("SELECT resource, verb FROM auth_permission")
+                .query((rs, n) -> new String[] {rs.getString("resource"), rs.getString("verb")}).list();
+
+        assertThat(filas).isNotEmpty().allSatisfy(f ->
+                assertThatNoException().as("permiso %s:%s", f[0], f[1]).isThrownBy(() -> new Permission(f[0], f[1])));
+    }
+
+    @Test
+    void v12_es_idempotente_y_reaplicarla_no_cambia_nada() {
+        var rolesAntes = contar("auth_role");
+        var permisosAntes = contar("auth_permission");
+        var concesionesAntes = contar("auth_role_permission");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V12__soporte_en_admin.sql"))
+                .execute(fuente);
+
+        assertThat(contar("auth_role")).isEqualTo(rolesAntes);
+        assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
+        assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
+        assertThat(permisosDelRolEn("admin", "soporte"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_SOPORTE);
     }
 
     @Autowired
