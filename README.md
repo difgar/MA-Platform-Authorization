@@ -245,6 +245,13 @@ enlace que al pulsarlo deniegue. **Se emite siempre, aunque venga vacío.**
 > La regla, en una línea: **`email` para mostrar en pantalla, `uid` para
 > guardar en tu base de datos.**
 
+### Roles propios de la app `admin`
+
+- **`configurador`** (V11): `leer`, `crear` y `editar` sobre `servicios`, `configuraciones`,
+  `callbacks`, `mapeos`, `mensajeria` y `anuncios`, más `catalogos:leer` y `bigquery:editar`.
+  Es el rol del módulo de configuración del admin (`MA-Platform-Config-API`). No lleva
+  `borrar`: allí no se borra, se inhabilita. El `admin` (`*:*`) ya los tiene por el comodín.
+
 ## Dar de alta una aplicación nueva
 
 Hacen falta **dos** cosas, y olvidar la segunda es el fallo más caro de
