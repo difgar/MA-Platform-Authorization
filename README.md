@@ -251,6 +251,11 @@ enlace que al pulsarlo deniegue. **Se emite siempre, aunque venga vacío.**
   `callbacks`, `mapeos`, `mensajeria` y `anuncios`, más `catalogos:leer` y `bigquery:editar`.
   Es el rol del módulo de configuración del admin (`MA-Platform-Config-API`). No lleva
   `borrar`: allí no se borra, se inhabilita. El `admin` (`*:*`) ya los tiene por el comodín.
+- **`soporte`** (V12): `soporte:leer`, `cancelaciones:crear` y `blacklist:editar`. Es el rol del
+  módulo Soporte del admin (`MA-Platform-Support-API`): consultar una línea, pedir a Claro la baja
+  de una suscripción y agregar o quitar la línea de la blacklist. «Cancelar» es
+  `cancelaciones:crear` y no `soporte:cancelar` porque los verbos son cuatro y cerrados (mismo
+  caso que `reenvios:crear` en V5). No confundir con `support` (V2), que en producción no existe.
 
 ## Dar de alta una aplicación nueva
 

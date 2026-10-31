@@ -19,10 +19,11 @@ public abstract class RepositoriosIT extends BaseIT {
         var app = apps.findByName("admin").orElseThrow();
 
         assertThat(apps.resourceCatalogue(app.id()))
-                // 3 de V2 + 8 de V11__configuracion_en_admin.sql
+                // 3 de V2 + 8 de V11__configuracion_en_admin.sql + 3 de V12__soporte_en_admin.sql
                 .containsExactlyInAnyOrder("apps", "usuarios", "roles",
                         "servicios", "configuraciones", "callbacks", "mapeos",
-                        "mensajeria", "anuncios", "catalogos", "bigquery")
+                        "mensajeria", "anuncios", "catalogos", "bigquery",
+                        "soporte", "cancelaciones", "blacklist")
                 .doesNotContain("*");
     }
 
@@ -50,16 +51,18 @@ public abstract class RepositoriosIT extends BaseIT {
     }
 
     @Test
-    void el_grant_de_usuario1_en_admin_expande_a_las_cuarenta_y_cuatro_autoridades() {
+    void el_grant_de_usuario1_en_admin_expande_a_las_cincuenta_y_seis_autoridades() {
         var app = apps.findByName("admin").orElseThrow();
         var usuario = usuarios.findByEmail("usuario1@pendiente.local").orElseThrow();
 
         var grant = AccessGrant.of(usuario, app, apps.resourceCatalogue(app.id()));
 
-        // 11 recursos (3 de V2 + 8 de V11) x 4 verbos: el rol admin tiene '*:*' y AccessGrant
-        // expande recursos x verbos, no filas (hay combinaciones sin fila, como servicios:borrar)
-        assertThat(grant.authorities()).hasSize(44)
-                .contains("apps:borrar", "usuarios:crear", "roles:editar");
+        // 14 recursos (3 de V2 + 8 de V11 + 3 de V12) x 4 verbos: el rol admin tiene '*:*' y
+        // AccessGrant expande recursos x verbos, no filas (hay combinaciones sin fila, como
+        // servicios:borrar o soporte:crear)
+        assertThat(grant.authorities()).hasSize(56)
+                .contains("apps:borrar", "usuarios:crear", "roles:editar",
+                        "soporte:leer", "cancelaciones:crear", "blacklist:editar");
         assertThat(grant.roleNames()).containsExactly("admin");
     }
 
