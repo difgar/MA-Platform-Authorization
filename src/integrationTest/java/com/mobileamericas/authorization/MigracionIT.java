@@ -114,12 +114,13 @@ public abstract class MigracionIT extends BaseIT {
         // auth_app pasa de 2 a 3 con V5__alta_trafficflow.sql y auth_role de 5 a
         // 6 con V6__rol_admin_trafficflow.sql, y a 8 con V9__roles_de_trafficflow.sql
         // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_admin_user_en_admin.sql
-        // (usuario@admin, la puerta al menú de aplicaciones). auth_user y auth_user_role NO
+        // (usuario@admin, la puerta al menú de aplicaciones), y a 10 con
+        // V11__configuracion_en_admin.sql (configurador). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
         assertThat(contar("auth_app")).isEqualTo(3L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(9L);
+        assertThat(contar("auth_role")).isEqualTo(10L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -185,6 +186,57 @@ public abstract class MigracionIT extends BaseIT {
         assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
         assertThat(permisosDelRolEn("admin", "admin_user")).containsExactly("apps:leer");
         assertThat(permisosDelRolEn("admin", "admin")).containsExactly("*:*");
+    }
+
+    private static final List<String> PERMISOS_DE_CONFIGURACION = List.of(
+            "servicios:leer", "servicios:crear", "servicios:editar",
+            "configuraciones:leer", "configuraciones:crear", "configuraciones:editar",
+            "callbacks:leer", "callbacks:crear", "callbacks:editar",
+            "mapeos:leer", "mapeos:crear", "mapeos:editar",
+            "mensajeria:leer", "mensajeria:crear", "mensajeria:editar",
+            "anuncios:leer", "anuncios:crear", "anuncios:editar",
+            "catalogos:leer",
+            "bigquery:editar");
+
+    @Test
+    void el_configurador_toca_la_configuracion_y_nada_mas() {
+        // V11 (2026-10-29): el rol del admin de configuracion. Ni apps, ni usuarios, ni roles,
+        // y ningun 'borrar': en la configuracion no se borra, se inhabilita.
+        assertThat(permisosDelRolEn("admin", "configurador"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_CONFIGURACION);
+    }
+
+    @Test
+    void el_catalogo_del_admin_declara_los_recursos_de_configuracion() {
+        // Sin estas filas, el '*:*' del admin no se expande a ellos y el admin no veria el
+        // modulo (ver AccessGrantTest). Ojo: en una base nueva, V2 crea 'support' (*:leer,
+        // *:editar) y 'analyst' (*:leer), que por la misma expansion verian la configuracion.
+        // En produccion esos dos roles no existen (comprobado el 2026-10-29).
+        var catalogo = jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p JOIN auth_app a ON a.id = p.app_id
+                         WHERE a.name = 'admin'
+                        """).query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
+
+        assertThat(catalogo).containsAll(PERMISOS_DE_CONFIGURACION);
+        assertThat(catalogo).noneMatch(p -> PERMISOS_DE_CONFIGURACION.stream()
+                .map(q -> q.substring(0, q.indexOf(':')))
+                .anyMatch(r -> p.equals(r + ":borrar")));
+    }
+
+    @Test
+    void v11_es_idempotente_y_reaplicarla_no_cambia_nada() {
+        var rolesAntes = contar("auth_role");
+        var permisosAntes = contar("auth_permission");
+        var concesionesAntes = contar("auth_role_permission");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V11__configuracion_en_admin.sql"))
+                .execute(fuente);
+
+        assertThat(contar("auth_role")).isEqualTo(rolesAntes);
+        assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
+        assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
+        assertThat(permisosDelRolEn("admin", "configurador"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_CONFIGURACION);
     }
 
     @Autowired
