@@ -1,4 +1,5 @@
--- Da a una persona un rol de la app `admin` (configurador, soporte...). Idempotente: si ya lo
+-- Da a una persona un rol de una app (por defecto `admin`: configurador, soporte...; con
+-- `-v app=portales`, los de portales). Idempotente: si ya lo
 -- tiene no hace nada. La persona tiene que existir y estar activa (haber entrado al menos una vez
 -- o estar en usuarios.sql): este script no crea usuarios.
 --
@@ -8,13 +9,19 @@
 --   PGPASSWORD="$(gcloud secrets versions access latest --secret=ma-auth-db-password --project=sms-ma-platform)" \
 --     psql "host=127.0.0.1 port=15441 dbname=ma_auth user=ma_auth sslmode=disable" -v ON_ERROR_STOP=1 \
 --          -v email=difgar@gmail.com -v rol=soporte -f shared/db/asignar-rol.sql
+-- Para portales: -v app=portales -v rol=portales_contenidos (o portales_configuracion). La persona
+-- necesita ademas un rol en la app admin (p. ej. admin_user) para ver el menu.
 -- El rol entra en el SIGUIENTE token: la persona tiene que salir y volver a entrar al admin.
 --
 -- Deshacer (mismas variables):
 --   DELETE FROM auth_user_role
 --    WHERE user_id = (SELECT id FROM auth_user WHERE email = lower(:'email'))
 --      AND role_id = (SELECT r.id FROM auth_role r JOIN auth_app a ON a.id = r.app_id
---                      WHERE a.name = 'admin' AND r.name = :'rol');
+--                      WHERE a.name = :'app' AND r.name = :'rol');
+\if :{?app}
+\else
+  \set app admin
+\endif
 \if :{?email}
 \else
   \echo 'Falta -v email=...'
@@ -28,7 +35,7 @@
 
 SELECT EXISTS (SELECT 1 FROM auth_user WHERE email = lower(:'email') AND active) AS hay_usuario,
        EXISTS (SELECT 1 FROM auth_role r JOIN auth_app a ON a.id = r.app_id
-                WHERE a.name = 'admin' AND r.name = :'rol') AS hay_rol \gset
+                WHERE a.name = :'app' AND r.name = :'rol') AS hay_rol \gset
 \if :hay_usuario
 \else
   \echo 'No hay un usuario activo con ese email: que entre una vez al admin, o revisar el email.'
@@ -36,7 +43,7 @@ SELECT EXISTS (SELECT 1 FROM auth_user WHERE email = lower(:'email') AND active)
 \endif
 \if :hay_rol
 \else
-  \echo 'La app admin no tiene ese rol (¿V11/V12 aplicadas? ¿errata?).'
+  \echo 'Esa app no tiene ese rol (¿V11..V13 aplicadas? ¿errata en app o rol?).'
   SELECT 1 / 0 AS sin_rol;
 \endif
 
@@ -44,7 +51,7 @@ INSERT INTO auth_user_role (user_id, role_id)
 SELECT u.id, r.id
   FROM auth_user u
   JOIN auth_role r ON r.name = :'rol'
-  JOIN auth_app a ON a.id = r.app_id AND a.name = 'admin'
+  JOIN auth_app a ON a.id = r.app_id AND a.name = :'app'
  WHERE u.email = lower(:'email')
    AND NOT EXISTS (SELECT 1 FROM auth_user_role x WHERE x.user_id = u.id AND x.role_id = r.id);
 

@@ -118,12 +118,13 @@ public abstract class MigracionIT extends BaseIT {
         // (trafficflow_user y trafficflow_viewer), y a 9 con V10__rol_admin_user_en_admin.sql
         // (usuario@admin, la puerta al menú de aplicaciones), a 10 con
         // V11__configuracion_en_admin.sql (configurador) y a 11 con V12__soporte_en_admin.sql
-        // (soporte). auth_user y auth_user_role NO
+        // (soporte), y auth_app a 4 y auth_role a 13 con V13__alta_portales.sql (la app
+        // portales con portales_contenidos y portales_configuracion). auth_user y auth_user_role NO
         // cambian: ninguna migración da de alta personas ni les asigna roles,
         // porque los correos reales no entran en git (ver el final de V6).
-        assertThat(contar("auth_app")).isEqualTo(3L);
+        assertThat(contar("auth_app")).isEqualTo(4L);
         assertThat(contar("auth_user")).isEqualTo(2L);
-        assertThat(contar("auth_role")).isEqualTo(11L);
+        assertThat(contar("auth_role")).isEqualTo(13L);
         assertThat(contar("auth_user_role")).isEqualTo(4L);
     }
 
@@ -291,6 +292,86 @@ public abstract class MigracionIT extends BaseIT {
         assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
         assertThat(permisosDelRolEn("admin", "soporte"))
                 .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_SOPORTE);
+    }
+
+    private static final List<String> CATALOGO_DE_PORTALES = List.of(
+            "portales:crear", "portales:leer", "portales:editar",
+            "contenidos:crear", "contenidos:leer", "contenidos:editar", "contenidos:borrar",
+            "categorias:crear", "categorias:leer", "categorias:editar", "categorias:borrar",
+            "temas:crear", "temas:leer", "temas:editar", "temas:borrar",
+            "destacados:leer", "destacados:editar",
+            "planes:crear", "planes:leer", "planes:editar", "planes:borrar",
+            "logros:crear", "logros:leer", "logros:editar", "logros:borrar",
+            "uso:leer");
+
+    private static final List<String> PERMISOS_DE_PORTALES_CONTENIDOS = List.of(
+            "portales:leer",
+            "contenidos:crear", "contenidos:leer", "contenidos:editar", "contenidos:borrar",
+            "destacados:leer", "destacados:editar",
+            "categorias:leer", "temas:leer", "planes:leer", "logros:leer", "uso:leer");
+
+    private static final List<String> PERMISOS_DE_PORTALES_CONFIGURACION = List.of(
+            "portales:crear", "portales:leer", "portales:editar",
+            "categorias:crear", "categorias:leer", "categorias:editar", "categorias:borrar",
+            "temas:crear", "temas:leer", "temas:editar", "temas:borrar",
+            "planes:crear", "planes:leer", "planes:editar", "planes:borrar",
+            "logros:crear", "logros:leer", "logros:editar", "logros:borrar",
+            "contenidos:leer", "destacados:leer", "uso:leer");
+
+    @Test
+    void portales_es_un_cliente_publico_con_sus_uris() {
+        // V13 (2026-11-11): la app del admin de portales de contenido.
+        var portales = configuracionCliente("portales");
+        var url = jdbc.sql("SELECT url FROM auth_app WHERE name = 'portales'").query(String.class).single();
+
+        assertThat(url).isEqualTo("https://portales.mobile-americas.com");
+        assertThat(portales.redirectUris()).isEqualTo(
+                "https://portales.mobile-americas.com/callback,http://localhost:5175/callback");
+        assertThat(portales.postLogoutRedirectUris()).isEqualTo(
+                "https://portales.mobile-americas.com/,http://localhost:5175/");
+        assertThat(portales.accessTtlSeconds()).isEqualTo(7200L);
+    }
+
+    @Test
+    void catalogo_de_portales_exacto() {
+        var catalogo = jdbc.sql("""
+                        SELECT p.resource, p.verb FROM auth_permission p JOIN auth_app a ON a.id = p.app_id
+                         WHERE a.name = 'portales'
+                        """).query((rs, n) -> rs.getString("resource") + ":" + rs.getString("verb")).list();
+
+        assertThat(catalogo).hasSize(26).containsExactlyInAnyOrderElementsOf(CATALOGO_DE_PORTALES);
+    }
+
+    @Test
+    void permisos_de_portales_contenidos() {
+        assertThat(permisosDelRolEn("portales", "portales_contenidos"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_PORTALES_CONTENIDOS);
+    }
+
+    @Test
+    void permisos_de_portales_configuracion() {
+        assertThat(permisosDelRolEn("portales", "portales_configuracion"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_PORTALES_CONFIGURACION);
+    }
+
+    @Test
+    void v13_es_idempotente_y_reaplicarla_no_cambia_nada() {
+        var appsAntes = contar("auth_app");
+        var rolesAntes = contar("auth_role");
+        var permisosAntes = contar("auth_permission");
+        var concesionesAntes = contar("auth_role_permission");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V13__alta_portales.sql"))
+                .execute(fuente);
+
+        assertThat(contar("auth_app")).isEqualTo(appsAntes);
+        assertThat(contar("auth_role")).isEqualTo(rolesAntes);
+        assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
+        assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
+        assertThat(permisosDelRolEn("portales", "portales_contenidos"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_PORTALES_CONTENIDOS);
+        assertThat(permisosDelRolEn("portales", "portales_configuracion"))
+                .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_PORTALES_CONFIGURACION);
     }
 
     @Autowired
