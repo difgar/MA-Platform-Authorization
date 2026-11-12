@@ -27,7 +27,7 @@ variable "issuer" {
 
 variable "cors_allowed_origins" {
   type    = string
-  default = "https://admin.mobile-americas.com,https://fgf.mobile-americas.com,https://traffic.mobile-americas.com"
+  default = "https://admin.mobile-americas.com,https://fgf.mobile-americas.com,https://traffic.mobile-americas.com,https://portales.mobile-americas.com"
 }
 
 variable "cloudsql_instance" {
