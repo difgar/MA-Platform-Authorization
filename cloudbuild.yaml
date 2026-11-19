@@ -8,7 +8,9 @@ substitutions:
   _IMAGE: ''
 steps:
   # El Dockerfile copia build/libs/ma-authorization*.jar: hay que construirlo antes.
-  - name: gradle:jdk25
+  # El mismo JDK que el resto (Zulu 25.0.5.1, por digest) y desde mirror.gcr.io: Docker Hub
+  # da 429 a Cloud Build. ./gradlew solo necesita java.
+  - name: mirror.gcr.io/azul/zulu-openjdk:25.0.5.1-jdk@sha256:dd32bf719adb65a0dfefcf3cd4d299654ba981161e7ce64af7e25ca695175c52
     entrypoint: ./gradlew
     args: [--no-daemon, -q, bootJar]
   - name: gcr.io/cloud-builders/docker
