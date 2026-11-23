@@ -374,6 +374,20 @@ public abstract class MigracionIT extends BaseIT {
                 .containsExactlyInAnyOrderElementsOf(PERMISOS_DE_PORTALES_CONFIGURACION);
     }
 
+    @Test
+    void v14_es_idempotente_y_reaplicarla_no_cambia_nada() {
+        var permisosAntes = contar("auth_permission");
+        var concesionesAntes = contar("auth_role_permission");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V14__permiso_campanas_borrar.sql"))
+                .execute(fuente);
+
+        assertThat(contar("auth_permission")).isEqualTo(permisosAntes);
+        assertThat(contar("auth_role_permission")).isEqualTo(concesionesAntes);
+        assertThat(permisosDelRol("trafficflow_user")).contains("campanas:borrar");
+        assertThat(permisosDelRol("trafficflow_viewer")).containsExactly("*:leer");
+    }
+
     @Autowired
     private DataSource fuente;
 
@@ -437,8 +451,8 @@ public abstract class MigracionIT extends BaseIT {
 
         assertThat(permisos).doesNotContain("reenvios:crear", "barridos:crear", "*:*")
                 .contains("postbacks:leer", "redes:crear", "campanas:editar", "endpoints:editar",
-                        "reglas:borrar", "enlaces:borrar")
-                .hasSize(24);
+                        "reglas:borrar", "enlaces:borrar", "campanas:borrar")
+                .hasSize(25);
     }
 
     @Test
@@ -480,7 +494,7 @@ public abstract class MigracionIT extends BaseIT {
     }
 
     @Test
-    void el_catalogo_de_trafficflow_tiene_exactamente_los_veintiseis_permisos() {
+    void el_catalogo_de_trafficflow_tiene_exactamente_los_veintisiete_permisos() {
         // containsExactlyInAnyOrder, no contains: un permiso de más -por
         // ejemplo, un 'postbacks:reenviar' colado por error- es una concesión
         // que nadie pidió y debe hacer fallar esta prueba tanto como uno de menos.
@@ -502,6 +516,8 @@ public abstract class MigracionIT extends BaseIT {
                 "redes:crear", "redes:leer", "redes:editar",
                 "servicios:crear", "servicios:leer", "servicios:editar",
                 "campanas:crear", "campanas:leer", "campanas:editar",
+                // V14: eliminar una campana (borrado logico, campaign.deleted_at).
+                "campanas:borrar",
                 "enlaces:crear", "enlaces:leer", "enlaces:borrar",
                 "reglas:crear", "reglas:leer", "reglas:editar", "reglas:borrar",
                 "endpoints:crear", "endpoints:leer", "endpoints:editar",
