@@ -99,6 +99,11 @@ public class UsuarioOidcService implements OAuth2UserService<OidcUserRequest, Oi
                     "El usuario está dado de baja en la plataforma.");
         }
 
+        // La otra mitad del rastro: sin los logins buenos, los rechazos no
+        // dicen si quien entró fuera de hora era alguien del equipo. Lo lee
+        // el chequeo diario (status-plataforma); el mismo criterio que el
+        // rechazo: el email y nada más.
+        log.info("Login correcto para '{}'", identidad);
         return new UsuarioAutenticado(deGoogle, identidad);
     }
 
