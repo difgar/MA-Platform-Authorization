@@ -171,9 +171,10 @@ resource "google_compute_region_network_endpoint_group" "auth" {
   }
 }
 
-# Sin Cloud Armor a proposito: una politica que solo permite no protege nada y cuesta
-# (difgar quito la equivalente de TrafficFlow el 2026-10-03). Se anade cuando haya una
-# regla con sentido, p. ej. un freno a /oauth2/token.
+# Cloud Armor: la politica ma-admin-auth (la misma en el auth y en la Admin-API) se
+# crea y se cambia a mano desde MA-Platform-config/gcp/prod/seguridad/, no aqui: sus
+# reglas se activan de una en una tras revisar el modo prueba. Aqui solo se declara la
+# asociacion, para que un apply no la quite (2026-11-27).
 resource "google_compute_backend_service" "auth" {
   count = local.con_imagen
 
@@ -184,6 +185,8 @@ resource "google_compute_backend_service" "auth" {
   backend {
     group = google_compute_region_network_endpoint_group.auth[0].id
   }
+
+  security_policy = "projects/sms-ma-platform/global/securityPolicies/ma-admin-auth"
 
   log_config {
     enable      = true
